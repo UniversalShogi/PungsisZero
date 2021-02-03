@@ -348,7 +348,7 @@ std::vector<DropAction> Board::getAvailableDrops(int colour) {
 }
 
 int Board::inflict(int colour, MoveAction action) {
-    std::cout << (std::string) action << std::endl;
+    this->directChecks[colour].nullify();
     int opponent = !colour;
 
     int start = colour == 1 ? 0 : PIECE_NUMBER / 2;
@@ -383,7 +383,7 @@ int Board::inflict(int colour, MoveAction action) {
 }
 
 void Board::inflict(int colour, DropAction action) {
-    std::cout << (std::string) action << std::endl;
+    this->directChecks[colour].nullify();
     int opponent = !colour;
     this->graveInfo[action.graveIndex] -= 1;
     int resultingPiece = GRAVE_TO_PIECE[action.graveIndex];
