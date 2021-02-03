@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+
+<html>
+    <head>
+        <style>
+            #board {
+                float: left;
+                display: grid;
+                grid-gap: 1em;
+                grid-template-rows: repeat(9, 1fr);
+                grid-template-columns: repeat(9, 1fr);
+            }
+        </style>
+    </head>
+    <body>
+        <div id="board"></div>
+        <button id="generate">GENERATE</button>
+        <div id="result"></div>
+        <script>
+            let board = document.getElementById('board');
+            let squares = [];
+
+            for (let i = 0; i < 81; i++) {
+                let square = document.createElement('input');
+                square.type = 'checkbox';
+                board.appendChild(square);
+                squares.push(square);
+            }
+            
+            document.getElementById('generate').onclick = () => {
+                let bitString = [];
+                let firstSelected = [0, 0];
+
+                for (let j = 0, c = 0; j <= 8; j++)
+                    for (let i = 8; i >= 0; i--, c++) {
+                        bitString[9 * i + j] = squares[c].checked ? '1' : '0';
+                        if (squares[c].checked)
+                            firstSelected = [i, j];
+                    }
+                
+                let bitBoard = BigInt('0b' + bitString.reverse().join(''));
+                document.getElementById('result').innerText = `0x${(bitBoard >> 64n).toString(16)}ULL, 0x${(bitBoard & BigInt('0xFFFFFFFFFFFFFFFF')).toString(16)}ULL, ${firstSelected}`;
+            };
+        </script>
+    </body>
+</html>
