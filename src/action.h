@@ -36,4 +36,21 @@ class DropAction {
     }
 };
 
+class Action {
+    public:
+    union {
+        MoveAction move;
+        DropAction drop;
+    };
+    bool isMove;
+
+    operator std::string() {
+        return this->isMove ? (std::string) this->move : (std::string) this->drop;
+    }
+
+    operator int() {
+        return this->isMove ? (int) this->move : (int) this->drop;
+    }
+};
+
 #endif

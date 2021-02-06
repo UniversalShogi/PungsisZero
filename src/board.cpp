@@ -2,58 +2,11 @@
 #include "bitboard.h"
 #include "board.h"
 #include "intrinsics.h"
+#include "zobrist.h"
 
 #include <string>
 #include <iostream>
 #include <vector>
-
-Board::operator std::string() {
-    char board[FILE_NUMBER * RANK_NUMBER * 4 + RANK_NUMBER + 1] = {};
-    char* ptr = board;
-    
-    for (int r = RANK_ONE; r <= RANK_NINE; r++) {
-        for (int f = FILE_NINE; f >= FILE_ONE; f--) {
-            
-            for (int piece = 0; piece < PIECE_NUMBER; piece++)
-                if (this->pieces[piece].test(toBBIndex(f, r))) {
-                    const char* start = PIECE_CHAR + piece * 3;
-                    std::copy(start, start + 3, ptr);
-                    ptr += 3;
-                    *(ptr++) = colourOf(piece) ? 'G': 'S';
-                    goto filled;
-                }
-            std::copy(NOPIECE_CHAR, NOPIECE_CHAR + 3, ptr);
-            ptr += 3;
-            *(ptr++) = 'N';
-            filled:
-            ;
-        }
-
-        *(ptr++) = '\n';
-    }
-
-    std::string output(board);
-
-    output += "SENTE:";
-
-    for (int drop = 0; drop < DROP_NUMBER / 2; drop++) {
-        output += " ";
-        output += std::string(DROP_CHAR + drop * 3, 3);
-        output += " * ";
-        output += std::to_string(this->graveInfo[drop]);
-    }
-
-    output += "\nGOTE:";
-
-    for (int drop = DROP_NUMBER / 2; drop < DROP_NUMBER; drop++) {
-        output += " ";
-        output += std::string(DROP_CHAR + drop * 3, 3);
-        output += " * ";
-        output += std::to_string(this->graveInfo[drop]);
-    }
-    
-    return output;
-}
 
 BitBoard FILE_BB[FILE_NUMBER];
 BitBoard RANK_BB[RANK_NUMBER];
@@ -84,6 +37,7 @@ int NS[] = { N, S };
 int EW[] = { E, W };
 
 void Board::init() {
+    Zobrist::init();
     for (int f = 0; f < FILE_NUMBER; f++)
         for (int r = 0; r < RANK_NUMBER; r++) {
             FILE_BB[f].set(toBBIndex(f, r));
@@ -209,9 +163,41 @@ void Board::init() {
     }
 }
 
-std::vector<MoveAction> Board::getAvailableMoves(int colour) {
+std::vector<MoveAction> Board::getNKMoves(int colour) {
     std::vector<MoveAction> availables;
-    BitBoard everyPieces = this->getEveryPieces();
+
+    int start = colour == 1 ? PIECE_NUMBER / 2 : 0;
+    int end = start + PIECE_NUMBER / 2;
+    int opponent = !colour;
+
+    for (int piece = start; piece < end; piece++) {
+        this->pieces[piece].forEach([&](int src) {
+            BitBoard attackable = this->getAttackingSquares(colour, src, piece);
+            BitBoard attackablePromote = PROMOTE_MASK[colour].test(src) ? BitBoard(attackable) : attackable & PROMOTE_MASK[colour];
+            
+            if (isPawnLike(piece))
+                attackable &= ~PAWN_FORCE_PROMOTION_MASK[colour];
+            else if (isLanceLike(piece))
+                attackable &= ~LANCE_FORCE_PROMOTION_MASK[colour];
+            else if (isKnightLike(piece))
+                attackable &= ~KNIGHT_FORCE_PROMOTION_MASK[colour];
+
+            if (PROMOTABLE_PIECE[piece])
+                attackablePromote.forEach([&](int dst) {
+                    availables.push_back(MoveAction{piece, src, dst, true});
+                });
+
+            attackable.forEach([&](int dst) {
+                availables.push_back(MoveAction{piece, src, dst, false});
+            });
+        });
+    }
+    
+    return availables;    
+}
+
+std::vector<MoveAction> Board::getKMoves(int colour) {
+    std::vector<MoveAction> availables;
 
     int start = colour == 1 ? PIECE_NUMBER / 2 : 0;
     int end = start + PIECE_NUMBER / 2;
@@ -222,8 +208,7 @@ std::vector<MoveAction> Board::getAvailableMoves(int colour) {
     BitBoard myChecking = this->directChecks[opponent] | this->getRangeAttackers(opponent, myKingLoc);
 
     if (myChecking.count() > 1) {
-        BitBoard evadable = getAttackingSquares(colour, myKingLoc, myKing);
-        evadable.forEach([&](int dst) {
+        getAttackingSquares(colour, myKingLoc, myKing).forEach([&](int dst) {
             if (!this->getAttackers(opponent, dst))
                 availables.push_back(MoveAction{myKing, myKingLoc, dst, false});
         });
@@ -239,8 +224,7 @@ std::vector<MoveAction> Board::getAvailableMoves(int colour) {
 
             if (myChecking) {
                 if (piece == myKing) {
-                    BitBoard evadable = getAttackingSquares(colour, myKingLoc, myKing);
-                    evadable.forEach([&](int dst) {
+                    getAttackingSquares(colour, myKingLoc, myKing).forEach([&](int dst) {
                         if (!this->getAttackers(opponent, dst))
                             availables.push_back(MoveAction{piece, src, dst, false});
                     });
@@ -276,39 +260,29 @@ std::vector<MoveAction> Board::getAvailableMoves(int colour) {
     return availables;
 }
 
-std::vector<DropAction> Board::getAvailableDrops(int colour) {
+std::vector<DropAction> Board::getNKDrops(int colour) {
     std::vector<DropAction> availables;
     int start = colour == 1 ? DROP_NUMBER / 2 : 0;
     int end = start + DROP_NUMBER / 2;
     BitBoard notEveryPieces = ~this->getEveryPieces();
 
     int opponent = !colour;
-    int myKing = kingOf(colour);
-    int myKingLoc = this->pieces[myKing].first();
-    BitBoard myChecking = this->directChecks[opponent] | this->getRangeAttackers(opponent, myKingLoc);
-
-    if (myChecking) {
-        if (myChecking.count() > 1)
-            return availables;
-        notEveryPieces &= myChecking & SEGMENT[myChecking.first()][myKingLoc];
-    }
 
     int dropPawnMate = -1;
     int opponentKingLoc = pieces[kingOf(opponent)].first();
     int khead = colour == 0 ? opponentKingLoc + 1 : opponentKingLoc - 1;
 
-    if (graveInfo[start] != 0 && this->pawnDropMask[colour].test(khead) && opponentKingLoc % RANK_NUMBER != opposingRank(opponent, 0)
+    if (opponentKingLoc != -1 && graveInfo[start] != 0 && this->pawnDropMask[colour].test(khead) && opponentKingLoc % RANK_NUMBER != opposingRank(opponent, 0)
         && notEveryPieces.test(khead)) {
 
         if (!getAttackers(colour, khead))
             goto noDropPawnMate;
         if(getAttackers(opponent, khead) & (getPinning(opponent, opponentKingLoc) | FILE_BB[khead / RANK_NUMBER]) & ~pieces[kingOf(opponent)])
             goto noDropPawnMate;
-        
-        BitBoard evadable = getAttackingSquares(opponent, opponentKingLoc, kingOf(opponent));
+
         dropPawnMate = khead;
 
-        evadable.forEach([&](int dst) {
+        getAttackingSquares(opponent, opponentKingLoc, kingOf(opponent)).forEach([&](int dst) {
             if (!this->getAttackers(colour, dst)) {
                 dropPawnMate = -1;
                 return;
@@ -347,6 +321,284 @@ std::vector<DropAction> Board::getAvailableDrops(int colour) {
     return availables;
 }
 
+std::vector<DropAction> Board::getKDrops(int colour) {
+    std::vector<DropAction> availables;
+    int start = colour == 1 ? DROP_NUMBER / 2 : 0;
+    int end = start + DROP_NUMBER / 2;
+    BitBoard notEveryPieces = ~this->getEveryPieces();
+
+    int opponent = !colour;
+    int myKing = kingOf(colour);
+    int myKingLoc = this->pieces[myKing].first();
+    BitBoard myChecking = this->directChecks[opponent] | this->getRangeAttackers(opponent, myKingLoc);
+
+    if (myChecking) {
+        if (myChecking.count() > 1)
+            return availables;
+        notEveryPieces &= myChecking | SEGMENT[myChecking.first()][myKingLoc];
+    }
+
+    int dropPawnMate = -1;
+    int opponentKingLoc = pieces[kingOf(opponent)].first();
+    int khead = colour == 0 ? opponentKingLoc + 1 : opponentKingLoc - 1;
+
+    if (opponentKingLoc != -1 && graveInfo[start] != 0 && this->pawnDropMask[colour].test(khead) && opponentKingLoc % RANK_NUMBER != opposingRank(opponent, 0)
+        && notEveryPieces.test(khead)) {
+
+        if (!getAttackers(colour, khead))
+            goto noDropPawnMate;
+        if(getAttackers(opponent, khead) & (getPinning(opponent, opponentKingLoc) | FILE_BB[khead / RANK_NUMBER]) & ~pieces[kingOf(opponent)])
+            goto noDropPawnMate;
+        
+        dropPawnMate = khead;
+
+        getAttackingSquares(opponent, opponentKingLoc, kingOf(opponent)).forEach([&](int dst) {
+            if (!this->getAttackers(colour, dst)) {
+                dropPawnMate = -1;
+                return;
+            }
+        });
+    }
+
+    noDropPawnMate:
+    ;
+
+    notEveryPieces.forEach([&](int dst) {
+        for (int i = start; i < end; i++) {
+            if (graveInfo[i] == 0)
+                continue;
+            int piece = GRAVE_TO_PIECE[i];
+
+            if (isPawnLike(piece)) {
+                if (dst != dropPawnMate && this->pawnDropMask[colour].test(dst))
+                    availables.push_back(DropAction{i, dst});
+                continue;
+            }
+            if (isLanceLike(piece)) {
+                if (LANCE_DROP_MASK[colour].test(dst))
+                    availables.push_back(DropAction{i, dst});
+                continue;
+            }
+            if (isKnightLike(piece)) {
+                if (KNIGHT_DROP_MASK[colour].test(dst))
+                    availables.push_back(DropAction{i, dst});
+                continue;
+            }
+            availables.push_back(DropAction{i, dst});
+        }
+    });
+
+    return availables;
+}
+
+std::vector<Action> Board::getNKActions(int colour) {
+    std::vector<Action> availables;
+
+    int start = colour == 1 ? PIECE_NUMBER / 2 : 0;
+    int end = start + PIECE_NUMBER / 2;
+    int opponent = !colour;
+
+    for (int piece = start; piece < end; piece++) {
+        this->pieces[piece].forEach([&](int src) {
+            BitBoard attackable = this->getAttackingSquares(colour, src, piece);
+            BitBoard attackablePromote = PROMOTE_MASK[colour].test(src) ? BitBoard(attackable) : attackable & PROMOTE_MASK[colour];
+            
+            if (isPawnLike(piece))
+                attackable &= ~PAWN_FORCE_PROMOTION_MASK[colour];
+            else if (isLanceLike(piece))
+                attackable &= ~LANCE_FORCE_PROMOTION_MASK[colour];
+            else if (isKnightLike(piece))
+                attackable &= ~KNIGHT_FORCE_PROMOTION_MASK[colour];
+
+            if (PROMOTABLE_PIECE[piece])
+                attackablePromote.forEach([&](int dst) {
+                    availables.push_back(Action{MoveAction{piece, src, dst, true}, true});
+                });
+
+            attackable.forEach([&](int dst) {
+                availables.push_back(Action{MoveAction{piece, src, dst, false}, true});
+            });
+        });
+    }
+
+    start = colour == 1 ? DROP_NUMBER / 2 : 0;
+    end = start + DROP_NUMBER / 2;
+    BitBoard notEveryPieces = ~this->getEveryPieces();
+
+    int dropPawnMate = -1;
+    int opponentKingLoc = pieces[kingOf(opponent)].first();
+    int khead = colour == 0 ? opponentKingLoc + 1 : opponentKingLoc - 1;
+
+    if (opponentKingLoc != -1 && graveInfo[start] != 0 && this->pawnDropMask[colour].test(khead) && opponentKingLoc % RANK_NUMBER != opposingRank(opponent, 0)
+        && notEveryPieces.test(khead)) {
+
+        if (!getAttackers(colour, khead))
+            goto noDropPawnMate;
+        if(getAttackers(opponent, khead) & (getPinning(opponent, opponentKingLoc) | FILE_BB[khead / RANK_NUMBER]) & ~pieces[kingOf(opponent)])
+            goto noDropPawnMate;
+        
+        dropPawnMate = khead;
+
+        getAttackingSquares(opponent, opponentKingLoc, kingOf(opponent)).forEach([&](int dst) {
+            if (!this->getAttackers(colour, dst)) {
+                dropPawnMate = -1;
+                return;
+            }
+        });
+    }
+
+    noDropPawnMate:
+    ;
+
+    notEveryPieces.forEach([&](int dst) {
+        for (int i = start; i < end; i++) {
+            if (graveInfo[i] == 0)
+                continue;
+            int piece = GRAVE_TO_PIECE[i];
+
+            if (isPawnLike(piece)) {
+                if (dst != dropPawnMate && this->pawnDropMask[colour].test(dst))
+                    availables.push_back(Action{MoveAction{i, dst}, false});
+                continue;
+            }
+            if (isLanceLike(piece)) {
+                if (LANCE_DROP_MASK[colour].test(dst))
+                    availables.push_back(Action{MoveAction{i, dst}, false});
+                continue;
+            }
+            if (isKnightLike(piece)) {
+                if (KNIGHT_DROP_MASK[colour].test(dst))
+                    availables.push_back(Action{MoveAction{i, dst}, false});
+                continue;
+            }
+            availables.push_back(Action{MoveAction{i, dst}, false});
+        }
+    });
+
+    return availables;    
+}
+
+std::vector<Action> Board::getKActions(int colour) {
+    std::vector<Action> availables;
+
+    int start = colour == 1 ? PIECE_NUMBER / 2 : 0;
+    int end = start + PIECE_NUMBER / 2;
+    int opponent = !colour;
+    
+    int myKing = kingOf(colour);
+    int myKingLoc = this->pieces[myKing].first();
+    BitBoard myChecking = this->directChecks[opponent] | this->getRangeAttackers(opponent, myKingLoc);
+
+    if (myChecking.count() > 1) {
+        getAttackingSquares(colour, myKingLoc, myKing).forEach([&](int dst) {
+            if (!this->getAttackers(opponent, dst))
+                availables.push_back(Action{MoveAction{myKing, myKingLoc, dst, false}, true});
+        });
+        return availables;
+    }
+
+    BitBoard pinned = this->getPinning(opponent, myKingLoc);
+
+
+    for (int piece = start; piece < end; piece++) {
+        this->pieces[piece].forEach([&](int src) {
+            BitBoard attackable = this->getAttackingSquares(colour, src, piece);
+
+            if (myChecking) {
+                if (piece == myKing) {
+                    getAttackingSquares(colour, myKingLoc, myKing).forEach([&](int dst) {
+                        if (!this->getAttackers(opponent, dst))
+                            availables.push_back(Action{MoveAction{piece, src, dst, false}, true});
+                    });
+                    return;
+                } else
+                    attackable &= (myChecking | SEGMENT[myChecking.first()][myKingLoc]);
+            }
+
+
+            if (pinned.test(src))
+                attackable &= LINE[src][this->pieces[kingOf(colour)].first()];
+            
+            BitBoard attackablePromote = PROMOTE_MASK[colour].test(src) ? BitBoard(attackable) : attackable & PROMOTE_MASK[colour];
+            
+            if (isPawnLike(piece))
+                attackable &= ~PAWN_FORCE_PROMOTION_MASK[colour];
+            else if (isLanceLike(piece))
+                attackable &= ~LANCE_FORCE_PROMOTION_MASK[colour];
+            else if (isKnightLike(piece))
+                attackable &= ~KNIGHT_FORCE_PROMOTION_MASK[colour];
+
+            if (PROMOTABLE_PIECE[piece])
+                attackablePromote.forEach([&](int dst) {
+                    availables.push_back(Action{MoveAction{piece, src, dst, true}, true});
+                });
+
+            attackable.forEach([&](int dst) {
+                availables.push_back(Action{MoveAction{piece, src, dst, false}, true});
+            });
+        });
+    }
+    
+    start = colour == 1 ? DROP_NUMBER / 2 : 0;
+    end = start + DROP_NUMBER / 2;
+    BitBoard notEveryPieces = ~this->getEveryPieces();
+
+    if (myChecking)
+        notEveryPieces &= myChecking | SEGMENT[myChecking.first()][myKingLoc];
+
+    int dropPawnMate = -1;
+    int opponentKingLoc = pieces[kingOf(opponent)].first();
+    int khead = colour == 0 ? opponentKingLoc + 1 : opponentKingLoc - 1;
+
+    if (opponentKingLoc != -1 && graveInfo[start] != 0 && this->pawnDropMask[colour].test(khead) && opponentKingLoc % RANK_NUMBER != opposingRank(opponent, 0)
+        && notEveryPieces.test(khead)) {
+
+        if (!getAttackers(colour, khead))
+            goto noDropPawnMate;
+        if(getAttackers(opponent, khead) & (getPinning(opponent, opponentKingLoc) | FILE_BB[khead / RANK_NUMBER]) & ~pieces[kingOf(opponent)])
+            goto noDropPawnMate;
+
+        dropPawnMate = khead;
+
+        getAttackingSquares(opponent, opponentKingLoc, kingOf(opponent)).forEach([&](int dst) {
+            if (!this->getAttackers(colour, dst)) {
+                dropPawnMate = -1;
+                return;
+            }
+        });
+    }
+
+    noDropPawnMate:
+    ;
+
+    notEveryPieces.forEach([&](int dst) {
+        for (int i = start; i < end; i++) {
+            if (graveInfo[i] == 0)
+                continue;
+            int piece = GRAVE_TO_PIECE[i];
+
+            if (isPawnLike(piece)) {
+                if (dst != dropPawnMate && this->pawnDropMask[colour].test(dst))
+                    availables.push_back(Action{MoveAction{i, dst}, false});
+                continue;
+            }
+            if (isLanceLike(piece)) {
+                if (LANCE_DROP_MASK[colour].test(dst))
+                    availables.push_back(Action{MoveAction{i, dst}, false});
+                continue;
+            }
+            if (isKnightLike(piece)) {
+                if (KNIGHT_DROP_MASK[colour].test(dst))
+                    availables.push_back(Action{MoveAction{i, dst}, false});
+                continue;
+            }
+            availables.push_back(Action{MoveAction{i, dst}, false});
+        }
+    });
+
+    return availables;
+}
+
 int Board::inflict(int colour, MoveAction action) {
     this->directChecks[colour].nullify();
     int opponent = !colour;
@@ -371,7 +623,7 @@ int Board::inflict(int colour, MoveAction action) {
     
     this->placement[colour].set(action.dst);
 
-    if (this->getAttackingSquares(colour, action.dst, resultingPiece) & this->pieces[kingOf(opponent)])
+    if (STEP_MOVES[resultingPiece][action.dst] & this->pieces[kingOf(opponent)])
         this->directChecks[colour].set(action.dst);
 
     if (isPawnLike(action.piece) && action.promote)
@@ -390,9 +642,65 @@ void Board::inflict(int colour, DropAction action) {
     this->pieces[resultingPiece].set(action.dst);
     this->placement[colour].set(action.dst);
 
-    if (this->getAttackingSquares(colour, action.dst, resultingPiece) & this->pieces[kingOf(opponent)])
+    if (STEP_MOVES[resultingPiece][action.dst] & this->pieces[kingOf(opponent)])
         this->directChecks[colour].set(action.dst);
 
     if (isPawnLike(resultingPiece))
         pawnDropMask[colour] &= ~PAWN_DROP_MASK[colour][action.dst / RANK_NUMBER];
+}
+
+void Board::inflict(int colour, Action action) {
+    if (action.isMove)
+        this->inflict(colour, action.move);
+    else
+        this->inflict(colour, action.drop);
+}
+
+
+Board::operator std::string() const {
+    char board[FILE_NUMBER * RANK_NUMBER * 4 + RANK_NUMBER + 1] = {};
+    char* ptr = board;
+    
+    for (int r = RANK_ONE; r <= RANK_NINE; r++) {
+        for (int f = FILE_NINE; f >= FILE_ONE; f--) {
+            
+            for (int piece = 0; piece < PIECE_NUMBER; piece++)
+                if (this->pieces[piece].test(toBBIndex(f, r))) {
+                    const char* start = PIECE_CHAR + piece * 3;
+                    std::copy(start, start + 3, ptr);
+                    ptr += 3;
+                    *(ptr++) = colourOf(piece) ? 'G': 'S';
+                    goto filled;
+                }
+            std::copy(NOPIECE_CHAR, NOPIECE_CHAR + 3, ptr);
+            ptr += 3;
+            *(ptr++) = 'N';
+            filled:
+            ;
+        }
+
+        *(ptr++) = '\n';
+    }
+
+    std::string output(board);
+
+    output += "SENTE:";
+
+    for (int drop = 0; drop < DROP_NUMBER / 2; drop++) {
+        output += " ";
+        output += std::string(DROP_CHAR + drop * 3, 3);
+        output += " * ";
+        output += std::to_string(this->graveInfo[drop]);
+    }
+
+    output += "\nGOTE:";
+
+    for (int drop = DROP_NUMBER / 2; drop < DROP_NUMBER; drop++) {
+        output += " ";
+        output += std::string(DROP_CHAR + drop * 3, 3);
+        output += " * ";
+        output += std::to_string(this->graveInfo[drop]);
+    }
+    
+    return output;
 }

@@ -110,12 +110,12 @@ class alignas(16) BitBoard {
         return BitBoard(*this) >>= shift;
     }
 
-    bool operator==(const BitBoard& other) {
+    bool operator==(const BitBoard& other) const {
         __m128i result = _mm_xor_si128(this->simd, other.simd);
         return _mm_testz_si128(result, result);
     }
 
-    bool operator!=(const BitBoard& other) {
+    bool operator!=(const BitBoard& other) const {
         return !(*this == other);
     }
 
@@ -167,13 +167,13 @@ class alignas(16) BitBoard {
         return -1;
     }
 
-    void forEach(auto callback) {
+    void forEach(auto callback) const {
         BitBoard copy(*this);
 
         int square;
 
         while ((square = copy.pop()) != -1)
-            callback(square);
+            callback(square);        
     }
 
     void set(int pos) {
@@ -194,7 +194,7 @@ class alignas(16) BitBoard {
         this->simd = _mm_setzero_si128();
     }
 
-    bool test(int pos) {
+    bool test(int pos) const {
         if (pos < 64)
             return this->parts[1] & 1ULL << pos;
         else

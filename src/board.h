@@ -47,30 +47,66 @@ class Board {
 
     Board() {
         for (int i = 0; i < PIECE_NUMBER; i++) {
-            pieces[i] = BitBoard(SETUP[i]);
-            placement[colourOf(i)] |= SETUP[i];
+            this->pieces[i] = BitBoard(SETUP[i]);
+            this->placement[colourOf(i)] |= SETUP[i];
         }
+    }
+
+    Board(int naiveSetup[FILE_NUMBER][RANK_NUMBER], char setupGraveInfo[DROP_NUMBER]) {
+        for (int f = 0; f < FILE_NUMBER; f++)
+            for (int r = 0; r < RANK_NUMBER; r++) {
+                if (naiveSetup[f][r] != NONE) {
+                    this->pieces[naiveSetup[f][r]].set(toBBIndex(f, r));
+                    this->placement[colourOf(naiveSetup[f][r])].set(toBBIndex(f, r));
+                }
+            }
+        
+        for (int i = 0; i < DROP_NUMBER; i++)
+            this->graveInfo[i] = setupGraveInfo[i];
+
+        this->calibrate();        
     }
 
     Board(const Board& other) {
         this->currentColour = other.currentColour;
         for (int i = 0; i < PIECE_NUMBER; i++)
             this->pieces[i] = BitBoard(other.pieces[i]);
-        for (int i = 0; i < COLOUR_NUMBER; i++)
+        for (int i = 0; i < COLOUR_NUMBER; i++) {
             this->placement[i] = BitBoard(other.placement[i]);
+            this->pawnDropMask[i] = BitBoard(other.pawnDropMask[i]);
+            this->directChecks[i] = BitBoard(other.directChecks[i]);
+        }
+        for (int i = 0; i < DROP_NUMBER; i++)
+            this->graveInfo[i] = other.graveInfo[i];
     }
 
     inline BitBoard getEveryPieces() {
         return placement[0] | placement[1];
     }
 
-    operator std::string();
+    operator std::string() const;
+
+    bool operator==(const Board& other) const {
+        if (this->currentColour != other.currentColour)
+            return false;
+        for (int i = 0; i < PIECE_NUMBER; i++)
+            if (this->pieces[i] != other.pieces[i])
+                return false;
+        for (int i = 0; i < DROP_NUMBER; i++)
+            if (this->graveInfo[i] != other.graveInfo[i])
+                return false;
+        return true;
+    }
+
+    bool operator!=(const Board& other) const {
+        return *this == other;
+    }
 
     static void init();
 
     void calibrate() {
         for (int i = 0; i < COLOUR_NUMBER; i++) {
-            this->directChecks[!i] = getStepAttackers(i, this->pieces[kingOf(!i)].first());
+            this->directChecks[i] = getStepAttackers(i, this->pieces[kingOf(!i)].first());
             
             for (int f = 0; f < FILE_NUMBER; f++)
                 if (!(FILE_BB[f] & this->pieces[pawnOf(i)]))
@@ -183,11 +219,16 @@ class Board {
         this->currentColour = !this->currentColour;
     }
 
-    std::vector<MoveAction> getAvailableMoves(int colour);
-    std::vector<DropAction> getAvailableDrops(int colour);
+    std::vector<MoveAction> getNKMoves(int colour);
+    std::vector<MoveAction> getKMoves(int colour);
+    std::vector<DropAction> getNKDrops(int colour);
+    std::vector<DropAction> getKDrops(int colour);
+    std::vector<Action> getNKActions(int colour);
+    std::vector<Action> getKActions(int colour);
 
     int inflict(int colour, MoveAction move);
     void inflict(int colour, DropAction drop);
+    void inflict(int colour, Action action);
 };
 
 #endif

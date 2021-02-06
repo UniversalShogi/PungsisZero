@@ -2,11 +2,11 @@
 #define GAME_H
 
 #include "board.h"
-#include <vector>
+#include <unordered_set>
 
 class Game {
     public:
-    std::vector<Board> history;
+    std::unordered_set<Board> history;
     Board current;
 };
 

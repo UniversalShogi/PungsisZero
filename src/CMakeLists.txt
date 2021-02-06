@@ -1,3 +1,3 @@
-file(GLOB SRC "*.h" "*.cpp")
+file(GLOB_RECURSE SRC "*.h" "*.cpp")
 
 add_library(bitboard ${SRC})

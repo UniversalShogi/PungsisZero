@@ -5,11 +5,11 @@
 
 using namespace torch::nn;
 
-class PungsisZeroImpl : Module {
+class MCTSModelImpl : Module {
     public:
     Sequential conv10, policyHead, valueHead;
 
-    PungsisZeroImpl() : conv10(
+    MCTSModelImpl() : conv10(
         Conv2d(Conv2dOptions(126, 140, 3).stride(1).padding(1)),
         BatchNorm2d(BatchNorm2dOptions(140)),
         ReLU(),
@@ -66,6 +66,6 @@ class PungsisZeroImpl : Module {
         values[1] = valueHead->forward<torch::Tensor>(input);
     }
 };
-TORCH_MODULE(PungsisZero);
+TORCH_MODULE(MCTSModel);
 
 #endif
