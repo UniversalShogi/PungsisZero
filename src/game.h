@@ -33,29 +33,31 @@ class Game {
         else
             action = gote->nextAction(history);
         
+        actionHistory.push_back(action);
+
         if (restricted && (action.type == MOVE || action.type == DROP)) {
             std::vector<Action> availables = current.getKActions(current.currentColour);
-            if (std::find(availables.begin(), availables.end(), action) == availables.end())
-                action.type = ILLEGAL;
-            else if (action.type) {
+            if (std::find(availables.begin(), availables.end(), action) == availables.end()) {
+                action = Action(ILLEGAL);
+                actionHistory.push_back(action);
+            } else {
                 Board currentcpy(current);
                 currentcpy.inflict(current.currentColour, action);
                 currentcpy.changeTurn();
                 if (std::count(history.begin(), history.end(), currentcpy) >= 4) {
                     if (currentcpy.getAttackers(current.currentColour, currentcpy.pieces[kingOf(!current.currentColour)].first()))
-                        action.type = ILLEGAL;
+                        action = Action(ILLEGAL);
                     else
-                        action.type = SENNICHITE;
+                        action = Action(SENNICHITE);
+                    actionHistory.push_back(action);
                 }
             }
         }
         
-        actionHistory.push_back(action);
-        
         if (action.type == RESIGN || action.type == ILLEGAL) {
             winner = !current.currentColour;
             ended = true;
-        } else if (action.type == SENNICHITE) {
+        } else if (action.type == SENNICHITE || action.type == JISHOGI) {
             winner = -1;
             ended = true;
         } else {

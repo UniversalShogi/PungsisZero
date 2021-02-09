@@ -8,9 +8,11 @@
 #include "actionprovider.h"
 #include "engine/mctsactionprovider.h"
 #include "search/mctsmodel.h"
+#include "kifu.h"
 
 #include <string>
 #include <iostream>
+#include <fstream>
 #include <bitset>
 #include <random>
 #include <stdlib.h>
@@ -23,12 +25,23 @@ main() {
     Board::init();
     Board start;
     MCTSModel model;
-    ActionProvider* sente = new MCTSActionProvider(model, start, 800);
-    ActionProvider* gote = new MCTSActionProvider(model, start, 800);
+    int depth;
+    std::cout << "DEPTH: ";
+    std::cin >> depth;
+    ActionProvider* sente = new MCTSActionProvider(model, start, depth, "MCTS_Sente");
+    ActionProvider* gote = new MCTSActionProvider(model, start, depth, "MCTS_Gote");
     Game selfPlay(sente, gote, false);
     std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
-    selfPlay.step();
+
+    while (!selfPlay.ended) {
+        selfPlay.step();
+        std::cout << (std::string) selfPlay.current << std::endl;
+    }
+
     std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
     std::cout << std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count() << std::endl;
-    std::cout << (std::string) selfPlay.current << std::endl;
+    std::ofstream file;
+    file.open("./kifu.txt", std::ofstream::out);
+    file << Kifu::toKifu(selfPlay);
+    file.close();
 }

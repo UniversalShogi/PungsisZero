@@ -13,8 +13,9 @@
 #include <time.h>
 #include <iostream>
 
-constexpr float PUCT_CONSTANT = 4;
+constexpr float PUCT_CONSTANT = 1;
 constexpr double DIRICHLET_CONSTANT = 0.15;
+constexpr float DIRICHLET_EPSILON = 0.25;
 
 class MCTSNode {
     public:
@@ -52,7 +53,7 @@ class MCTSNode {
         return torch::from_blob(input, {(PIECE_NUMBER + DROP_NUMBER) * 3 + 2, 9, 9}, torch::TensorOptions().dtype(torch::kFloat32)).clone().unsqueeze(0);
     }
 
-    void expand(MCTSModel model) {
+    void expandNoisy(MCTSModel model) {
         std::vector<Action> availables = state.getKActions(state.currentColour);
         gsl_rng* r = gsl_rng_alloc(gsl_rng_mt19937);
         gsl_rng_set(r, time(NULL));
@@ -73,7 +74,7 @@ class MCTSNode {
             statecpy.changeTurn();
             
             MCTSNode* child = new MCTSNode(statecpy, this);
-            child->P = 0.75 * outputs[0][0][action.toModelOutput()][action.getPrincipalPosition() / 9][action.getPrincipalPosition() % 9].item<float>() + 0.25 * theta[i];
+            child->P = (1 - DIRICHLET_EPSILON) * outputs[0][0][action.toModelOutput()][action.getPrincipalPosition() / 9][action.getPrincipalPosition() % 9].item<float>() + DIRICHLET_EPSILON * theta[i];
             childs.insert({action, child});
         }
 
@@ -84,6 +85,29 @@ class MCTSNode {
         delete[] theta;
         delete[] alpha;
         gsl_rng_free(r);
+    }
+
+    void expandSilent(MCTSModel model) {
+        std::vector<Action> availables = state.getKActions(state.currentColour);
+        torch::Tensor outputs[2];
+
+        model.get()->forward(this->toInput(), outputs);
+
+        for (int i = 0; i < availables.size(); i++) {
+            Action action = availables[i];
+            Board statecpy(state);
+            statecpy.inflict(state.currentColour, action);
+            statecpy.changeTurn();
+            
+            MCTSNode* child = new MCTSNode(statecpy, this);
+            child->P = outputs[0][0][action.toModelOutput()][action.getPrincipalPosition() / 9][action.getPrincipalPosition() % 9].item<float>();
+            childs.insert({action, child});
+        }
+
+        this->expanded = true;
+
+        if (this->childs.empty())
+            this->lost = true;
     }
 };
 
@@ -113,7 +137,7 @@ class MCTS {
 
     void opponentMove(Action action) {
         if (!this->searchingNode->expanded)
-            this->searchingNode->expand(model);
+            this->searchingNode->expandSilent(model);
         this->searchingNode = this->searchingNode->childs[action];
     }
 
@@ -130,6 +154,8 @@ class MCTS {
             }
         
         this->searchingNode = bestChild;
+
+        std::cout << bestChild->Q << std::endl;
         
         return bestAction;
     }

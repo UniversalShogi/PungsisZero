@@ -14,8 +14,6 @@ constexpr int RANK_TWO = 1;
 constexpr int RANK_NINE = 8;
 constexpr int RANK_EIGHT = 7;
 
-constexpr char FILE_CHAR[] = "一二三四五六七八九";
-constexpr char RANK_CHAR[] = "１２３４５６７８９";
 constexpr char PIECE_CHAR[] = "歩と香杏桂圭銀全金角馬飛龍玉歩と香杏桂圭銀全金角馬飛龍王";
 constexpr char DROP_CHAR[] = "歩香桂銀金角飛歩香桂銀金角飛";
 constexpr char NOPIECE_CHAR[] = "無";
@@ -57,6 +55,8 @@ constexpr int PIECE_TO_GRAVE[PIECE_NUMBER] = { 7, 7, 8, 8, 9, 9, 10, 10, 11, 12,
 constexpr int GRAVE_TO_PIECE[DROP_NUMBER] = { 0, 2, 4, 6, 8, 9, 11, 14, 16, 18, 20, 22, 23, 25 };
 constexpr bool PROMOTABLE_PIECE[PIECE_NUMBER] = { true, false, true, false, true, false, true, false, false, true, false, true, false, false,
     true, false, true, false, true, false, true, false, false, true, false, true, false, false };
+constexpr bool PROMOTED[PIECE_NUMBER] = { false, true, false, true, false, true, false, true, false, false, true, false, true, false,
+    false, true, false, true, false, true, false, true, false, false, true, false, true, false };
 
 enum QueenDirection {
     STUB,

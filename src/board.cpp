@@ -171,7 +171,7 @@ void Board::init() {
         LANCE_FORCE_PROMOTION_MASK[colour] |= RANK_BB[opposingRank(colour, 0)];
         LANCE_DROP_MASK[colour] = ~LANCE_FORCE_PROMOTION_MASK[colour];
         KNIGHT_FORCE_PROMOTION_MASK[colour] |= RANK_BB[opposingRank(colour, 0)];
-        KNIGHT_FORCE_PROMOTION_MASK[colour] |= RANK_BB[opposingRank(colour, 0)];
+        KNIGHT_FORCE_PROMOTION_MASK[colour] |= RANK_BB[opposingRank(colour, 1)];
         KNIGHT_DROP_MASK[colour] = ~KNIGHT_FORCE_PROMOTION_MASK[colour];
     }
     
@@ -240,14 +240,13 @@ std::vector<MoveAction> Board::getKMoves(int colour) {
         this->pieces[piece].forEach([&](int src) {
             BitBoard attackable = this->getAttackingSquares(colour, src, piece);
 
-            if (myChecking) {
-                if (piece == myKing) {
+            if (piece == myKing) {
                     getAttackingSquares(colour, myKingLoc, myKing).forEach([&](int dst) {
                         if (!this->getAttackers(opponent, dst))
                             availables.push_back(MoveAction{piece, src, dst, false});
                     });
                     return;
-                } else
+            } else if (myChecking) {
                     attackable &= (myChecking | SEGMENT[myChecking.first()][myKingLoc]);
             }
 
@@ -522,14 +521,13 @@ std::vector<Action> Board::getKActions(int colour) {
         this->pieces[piece].forEach([&](int src) {
             BitBoard attackable = this->getAttackingSquares(colour, src, piece);
 
-            if (myChecking) {
-                if (piece == myKing) {
+            if (piece == myKing) {
                     getAttackingSquares(colour, myKingLoc, myKing).forEach([&](int dst) {
                         if (!this->getAttackers(opponent, dst))
                             availables.push_back(Action(MoveAction{piece, src, dst, false}));
                     });
                     return;
-                } else
+            } else if (myChecking) {
                     attackable &= (myChecking | SEGMENT[myChecking.first()][myKingLoc]);
             }
 

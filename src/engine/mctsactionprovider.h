@@ -7,16 +7,19 @@
 #include "../board.h"
 
 #include <vector>
+#include <string>
 
 class MCTSActionProvider : public ActionProvider {
     public:
     MCTS mcts;
     int depth;
+    std::string name;
 
-    MCTSActionProvider(MCTSModel model, Board initialState, int depth) : mcts(model, initialState), depth(depth) {}
+    MCTSActionProvider(MCTSModel model, Board initialState, int depth, std::string name) : mcts(model, initialState), depth(depth), name(name) {}
 
     Action nextAction(std::vector<Board>& history) override;
     void opponentMove(Action action) override;
+    std::string getName() const override;
 };
 
 #endif

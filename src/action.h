@@ -43,7 +43,8 @@ enum ActionType {
     DROP,
     RESIGN,
     ILLEGAL,
-    SENNICHITE
+    SENNICHITE,
+    JISHOGI
 };
 
 extern int MODEL_OUTPUT[FILE_NUMBER * RANK_NUMBER][FILE_NUMBER * RANK_NUMBER];
@@ -59,6 +60,7 @@ class Action {
     Action(MoveAction move) : move(move), type(MOVE) {}
     Action(DropAction drop) : drop(drop), type(DROP) {}
     Action() : type(RESIGN) {}
+    Action(ActionType type) : type(type) {}
 
     operator std::string() const {
         switch (this->type) {
@@ -72,6 +74,8 @@ class Action {
                 return "ILLEGAL";
             case SENNICHITE:
                 return "SENNICHITE";
+            case JISHOGI:
+                return "JISHOGI";
             default:
                 return "UNKNOWN";
         }
