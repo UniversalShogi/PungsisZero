@@ -3,7 +3,7 @@
 BitBoard BB_NONE;
 BitBoard BB_ALL = BitBoard(0x1FFFFULL, 0xFFFFFFFFFFFFFFFFULL);
 
-BitBoard::operator std::string() {
+BitBoard::operator std::string() const {
     std::string output;
 
     for (int r = RANK_ONE; r <= RANK_NINE; r++) {

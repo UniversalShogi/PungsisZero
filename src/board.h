@@ -33,6 +33,7 @@ extern BitBoard ROOK_RANK_MOVES_INVERT[FILE_NUMBER * RANK_NUMBER][ROOK_PEXT];
 extern BitBoard LANCE_MOVES_INVERT[COLOUR_NUMBER][FILE_NUMBER * RANK_NUMBER][ROOK_PEXT];
 extern BitBoard BISHOP_MOVES_INVERT[FILE_NUMBER * RANK_NUMBER][ROOK_PEXT * ROOK_PEXT];
 extern BitBoard PROMOTE_MASK[COLOUR_NUMBER];
+extern int MODEL_OUTPUT[FILE_NUMBER * RANK_NUMBER][FILE_NUMBER * RANK_NUMBER];
 
 class Board {
     public:
@@ -52,7 +53,7 @@ class Board {
         }
     }
 
-    Board(int naiveSetup[FILE_NUMBER][RANK_NUMBER], char setupGraveInfo[DROP_NUMBER]) {
+    Board(const int naiveSetup[FILE_NUMBER][RANK_NUMBER], const char setupGraveInfo[DROP_NUMBER]) {
         for (int f = 0; f < FILE_NUMBER; f++)
             for (int r = 0; r < RANK_NUMBER; r++) {
                 if (naiveSetup[f][r] != NONE) {
@@ -80,7 +81,7 @@ class Board {
             this->graveInfo[i] = other.graveInfo[i];
     }
 
-    inline BitBoard getEveryPieces() {
+    BitBoard getEveryPieces() const {
         return placement[0] | placement[1];
     }
 
@@ -116,7 +117,7 @@ class Board {
         }
     }
 
-    BitBoard getPenetratingSquares(int colour, int penetratingColour, int src, int piece) {
+    BitBoard getPenetratingSquares(int colour, int penetratingColour, int src, int piece) const {
         BitBoard everyPieces = this->placement[!penetratingColour];
         BitBoard attackable;
         int f = src / RANK_NUMBER;
@@ -142,7 +143,7 @@ class Board {
         return attackable;
     }
 
-    BitBoard getAttackingSquares(int colour, int src, int piece) {
+    BitBoard getAttackingSquares(int colour, int src, int piece) const {
         BitBoard everyPieces = this->getEveryPieces();
         BitBoard attackable = BitBoard(STEP_MOVES[piece][src]);
         int f = src / RANK_NUMBER;
@@ -168,7 +169,7 @@ class Board {
         return attackable;
     }
 
-    BitBoard getStepAttackers(int colour, int dst) {
+    BitBoard getStepAttackers(int colour, int dst) const {
         int start = colour == 0 ? 0 : PIECE_NUMBER / 2;
         int end = start + PIECE_NUMBER / 2;
         BitBoard everyPieces = this->getEveryPieces();
@@ -179,7 +180,7 @@ class Board {
         return attacking;        
     }
 
-    BitBoard getRangeAttackers(int colour, int dst) {
+    BitBoard getRangeAttackers(int colour, int dst) const {
         BitBoard everyPieces = this->getEveryPieces();
         BitBoard bb;
         int f = dst / RANK_NUMBER;
@@ -191,11 +192,11 @@ class Board {
         return bb;
     }
 
-    BitBoard getAttackers(int colour, int dst) {
+    BitBoard getAttackers(int colour, int dst) const {
         return getStepAttackers(colour, dst) | getRangeAttackers(colour, dst);
     }
 
-    BitBoard getPinning(int colour, int dst) {
+    BitBoard getPinning(int colour, int dst) const {
         BitBoard everyPieces = this->getEveryPieces();
         BitBoard bb;
         BitBoard pinning;
@@ -219,6 +220,19 @@ class Board {
         this->currentColour = !this->currentColour;
     }
 
+    void toInput(float board[PIECE_NUMBER + DROP_NUMBER][FILE_NUMBER][RANK_NUMBER]) const {    
+        for (int f = 0; f < FILE_NUMBER; f++)
+            for (int r = 0; r < RANK_NUMBER; r++) {
+                for (int p = 0; p < PIECE_NUMBER; p++)
+                    if (this->pieces[p].test(toBBIndex(f, r)))
+                        board[p][f][r] = 1;
+                    else
+                        board[p][f][r] = 0;
+                for (int d = 0; d < DROP_NUMBER; d++)
+                    board[PIECE_NUMBER + d][f][r] = this->graveInfo[d];
+            }
+    }
+
     std::vector<MoveAction> getNKMoves(int colour);
     std::vector<MoveAction> getKMoves(int colour);
     std::vector<DropAction> getNKDrops(int colour);
@@ -230,5 +244,7 @@ class Board {
     void inflict(int colour, DropAction drop);
     void inflict(int colour, Action action);
 };
+
+extern Board BEMPTY;
 
 #endif

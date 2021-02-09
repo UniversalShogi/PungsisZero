@@ -5,12 +5,12 @@
 
 using namespace torch::nn;
 
-class MCTSModelImpl : Module {
+class MCTSModelImpl : public Module {
     public:
     Sequential conv10, policyHead, valueHead;
 
     MCTSModelImpl() : conv10(
-        Conv2d(Conv2dOptions(126, 140, 3).stride(1).padding(1)),
+        Conv2d(Conv2dOptions(128, 140, 3).stride(1).padding(1)),
         BatchNorm2d(BatchNorm2dOptions(140)),
         ReLU(),
         Conv2d(Conv2dOptions(140, 140, 3).stride(1).padding(1)),

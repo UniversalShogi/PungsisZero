@@ -31,10 +31,13 @@ BitBoard ROOK_RANK_MOVES_INVERT[FILE_NUMBER * RANK_NUMBER][ROOK_PEXT];
 BitBoard LANCE_MOVES_INVERT[COLOUR_NUMBER][FILE_NUMBER * RANK_NUMBER][ROOK_PEXT];
 BitBoard BISHOP_MOVES_INVERT[FILE_NUMBER * RANK_NUMBER][ROOK_PEXT * ROOK_PEXT];
 BitBoard PROMOTE_MASK[COLOUR_NUMBER];
+Board BEMPTY;
+int MODEL_OUTPUT[FILE_NUMBER * RANK_NUMBER][FILE_NUMBER * RANK_NUMBER];
 
 int DIAGONAL[] = { NE, NW, SE, SW };
 int NS[] = { N, S };
 int EW[] = { E, W };
+int DIR8[] = { N, NE, E, SE, S, SW, W, NW };
 
 void Board::init() {
     Zobrist::init();
@@ -45,7 +48,8 @@ void Board::init() {
         }
     for (int f = 0; f < FILE_NUMBER; f++)
         for (int r = 0; r < RANK_NUMBER; r++) {
-            for (int power : PIECE_POWER[S_KING]) {
+            for (int n = 0; n < 8; n++) {
+                int power = DIR8[n];
                 BitBoard line;
                 BitBoard segment;
 
@@ -69,6 +73,7 @@ void Board::init() {
                     if (isInBound(dst[0], dst[1])) {
                         SEGMENT[toBBIndex(f, r)][toBBIndex(dst[0], dst[1])] = BitBoard(segment);
                         segment.set(toBBIndex(dst[0], dst[1]));
+                        MODEL_OUTPUT[toBBIndex(f, r)][toBBIndex(dst[0], dst[1])] = n * 8 + (i - 1);
                     } else
                         break;
                 }
@@ -79,11 +84,19 @@ void Board::init() {
                     if (power != STUB) {
                         int dst[2];
 
-                        if (isKnightLike(piece))
+                        if (isKnightLike(piece)) 
                             calculateLionDestination(f, r, power, dst);
                         else
                             calculateQueenDestination(f, r, power, dst);
                         if (isInBound(dst[0], dst[1])) {
+                            if (isKnightLike(piece))
+                                if (power == NNE) {
+                                    MODEL_OUTPUT[toBBIndex(f, r)][toBBIndex(dst[0], dst[1])] = 64;
+                                    MODEL_OUTPUT[toBBIndex(dst[0], dst[1])][toBBIndex(f, r)] = 64;
+                                } else {
+                                    MODEL_OUTPUT[toBBIndex(f, r)][toBBIndex(dst[0], dst[1])] = 65;
+                                    MODEL_OUTPUT[toBBIndex(dst[0], dst[1])][toBBIndex(f, r)] = 65;
+                                }
                             STEP_MOVES[piece][toBBIndex(f, r)].set(toBBIndex(dst[0], dst[1]));
                             STEP_MOVES_INVERT[piece][toBBIndex(dst[0], dst[1])].set(toBBIndex(f, r));
                         }
@@ -161,6 +174,11 @@ void Board::init() {
         KNIGHT_FORCE_PROMOTION_MASK[colour] |= RANK_BB[opposingRank(colour, 0)];
         KNIGHT_DROP_MASK[colour] = ~KNIGHT_FORCE_PROMOTION_MASK[colour];
     }
+    
+    constexpr char EMPTY_GRAVE[DROP_NUMBER] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+
+    BEMPTY = Board(EMPTY_BOARD, EMPTY_GRAVE);
+    BEMPTY.calibrate();
 }
 
 std::vector<MoveAction> Board::getNKMoves(int colour) {
@@ -412,11 +430,11 @@ std::vector<Action> Board::getNKActions(int colour) {
 
             if (PROMOTABLE_PIECE[piece])
                 attackablePromote.forEach([&](int dst) {
-                    availables.push_back(Action{MoveAction{piece, src, dst, true}, true});
+                    availables.push_back(Action(MoveAction{piece, src, dst, true}));
                 });
 
             attackable.forEach([&](int dst) {
-                availables.push_back(Action{MoveAction{piece, src, dst, false}, true});
+                availables.push_back(Action(MoveAction{piece, src, dst, false}));
             });
         });
     }
@@ -458,20 +476,20 @@ std::vector<Action> Board::getNKActions(int colour) {
 
             if (isPawnLike(piece)) {
                 if (dst != dropPawnMate && this->pawnDropMask[colour].test(dst))
-                    availables.push_back(Action{MoveAction{i, dst}, false});
+                    availables.push_back(Action(DropAction{i, dst}));
                 continue;
             }
             if (isLanceLike(piece)) {
                 if (LANCE_DROP_MASK[colour].test(dst))
-                    availables.push_back(Action{MoveAction{i, dst}, false});
+                    availables.push_back(Action(DropAction{i, dst}));
                 continue;
             }
             if (isKnightLike(piece)) {
                 if (KNIGHT_DROP_MASK[colour].test(dst))
-                    availables.push_back(Action{MoveAction{i, dst}, false});
+                    availables.push_back(Action(DropAction{i, dst}));
                 continue;
             }
-            availables.push_back(Action{MoveAction{i, dst}, false});
+            availables.push_back(Action(DropAction{i, dst}));
         }
     });
 
@@ -492,7 +510,7 @@ std::vector<Action> Board::getKActions(int colour) {
     if (myChecking.count() > 1) {
         getAttackingSquares(colour, myKingLoc, myKing).forEach([&](int dst) {
             if (!this->getAttackers(opponent, dst))
-                availables.push_back(Action{MoveAction{myKing, myKingLoc, dst, false}, true});
+                availables.push_back(Action(MoveAction{myKing, myKingLoc, dst, false}));
         });
         return availables;
     }
@@ -508,7 +526,7 @@ std::vector<Action> Board::getKActions(int colour) {
                 if (piece == myKing) {
                     getAttackingSquares(colour, myKingLoc, myKing).forEach([&](int dst) {
                         if (!this->getAttackers(opponent, dst))
-                            availables.push_back(Action{MoveAction{piece, src, dst, false}, true});
+                            availables.push_back(Action(MoveAction{piece, src, dst, false}));
                     });
                     return;
                 } else
@@ -530,11 +548,11 @@ std::vector<Action> Board::getKActions(int colour) {
 
             if (PROMOTABLE_PIECE[piece])
                 attackablePromote.forEach([&](int dst) {
-                    availables.push_back(Action{MoveAction{piece, src, dst, true}, true});
+                    availables.push_back(Action(MoveAction{piece, src, dst, true}));
                 });
 
             attackable.forEach([&](int dst) {
-                availables.push_back(Action{MoveAction{piece, src, dst, false}, true});
+                availables.push_back(Action(MoveAction{piece, src, dst, false}));
             });
         });
     }
@@ -579,20 +597,20 @@ std::vector<Action> Board::getKActions(int colour) {
 
             if (isPawnLike(piece)) {
                 if (dst != dropPawnMate && this->pawnDropMask[colour].test(dst))
-                    availables.push_back(Action{MoveAction{i, dst}, false});
+                    availables.push_back(Action(DropAction{i, dst}));
                 continue;
             }
             if (isLanceLike(piece)) {
                 if (LANCE_DROP_MASK[colour].test(dst))
-                    availables.push_back(Action{MoveAction{i, dst}, false});
+                    availables.push_back(Action(DropAction{i, dst}));
                 continue;
             }
             if (isKnightLike(piece)) {
                 if (KNIGHT_DROP_MASK[colour].test(dst))
-                    availables.push_back(Action{MoveAction{i, dst}, false});
+                    availables.push_back(Action(DropAction{i, dst}));
                 continue;
             }
-            availables.push_back(Action{MoveAction{i, dst}, false});
+            availables.push_back(Action(DropAction{i, dst}));
         }
     });
 
@@ -650,9 +668,9 @@ void Board::inflict(int colour, DropAction action) {
 }
 
 void Board::inflict(int colour, Action action) {
-    if (action.isMove)
+    if (action.type == MOVE)
         this->inflict(colour, action.move);
-    else
+    else if (action.type == DROP)
         this->inflict(colour, action.drop);
 }
 

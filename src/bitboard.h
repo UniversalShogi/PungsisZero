@@ -78,35 +78,35 @@ class alignas(16) BitBoard {
         return *this;
     }
 
-    BitBoard operator+(const BitBoard& other) {
+    BitBoard operator+(const BitBoard& other) const {
         return BitBoard(*this) += other;
     }
 
-    BitBoard operator-(const BitBoard& other) {
+    BitBoard operator-(const BitBoard& other) const {
         return BitBoard(*this) -= other;
     }
 
-    BitBoard operator&(const BitBoard& other) {
+    BitBoard operator&(const BitBoard& other) const {
         return BitBoard(*this) &= other;
     }
 
-    BitBoard operator|(const BitBoard& other) {
+    BitBoard operator|(const BitBoard& other) const {
         return BitBoard(*this) |= other;
     }
 
-    BitBoard operator^(const BitBoard& other) {
+    BitBoard operator^(const BitBoard& other) const {
         return BitBoard(*this) ^= other;
     }
 
-    BitBoard operator~() {
+    BitBoard operator~() const {
         return *this ^ BB_ALL;
     }
 
-    BitBoard operator<<(int shift) {
+    BitBoard operator<<(int shift) const {
         return BitBoard(*this) <<= shift;
     }
 
-    BitBoard operator>>(int shift) {
+    BitBoard operator>>(int shift) const {
         return BitBoard(*this) >>= shift;
     }
 
@@ -119,11 +119,11 @@ class alignas(16) BitBoard {
         return !(*this == other);
     }
 
-    template<int pos> uint64_t chunk() {
+    template<int pos> uint64_t chunk() const {
         return _mm_extract_epi64(this->simd, pos);
     }
 
-    operator bool() {
+    operator bool() const {
         return !_mm_testz_si128(this->simd, this->simd);
     }
 
@@ -133,11 +133,11 @@ class alignas(16) BitBoard {
         return bb;
     }
 
-    int count() {
+    int count() const {
         return _mm_popcnt_u64(this->parts[0]) + _mm_popcnt_u64(this->parts[1]);
     }
 
-    int first() {
+    int first() const {
         int index;
 
         if (this->parts[1] != 0) {
@@ -201,7 +201,7 @@ class alignas(16) BitBoard {
             return this->parts[0] & 1ULL << pos - 64;
     }
 
-    uint64_t crushBishop() {
+    uint64_t crushBishop() const {
         return parts[0] << 1 | parts[1];
     }
 
@@ -220,11 +220,11 @@ class alignas(16) BitBoard {
         return bb;
     }
 
-    uint64_t crushRookRank() {
+    uint64_t crushRookRank() const {
         return parts[1] >> 9 | parts[0] << 55;
     }
 
-    uint64_t crushRookFile() {
+    uint64_t crushRookFile() const {
         return parts[1] >> 63 | parts[0] << 1;
     }
 
@@ -238,7 +238,7 @@ class alignas(16) BitBoard {
         return bb;
     }
 
-    operator std::string();
+    operator std::string() const;
 };
 
 #endif

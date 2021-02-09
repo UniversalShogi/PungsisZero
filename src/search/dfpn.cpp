@@ -5,23 +5,25 @@
 #include "../zobrist.h"
 
 #include <algorithm>
-#include <limits>
 #include <utility>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 #include <iostream>
 #include <numeric>
 #include <thread>
 #include <chrono>
 
-constexpr int INFINITY = std::numeric_limits<int>::max();
+void DFPN::RID(Board state, int deltaThreshold, int phiThreshold, bool myKing, bool opponentKing, bool isMating, std::unordered_map<Board, Action, Zobrist>& tsumeMap) {
+    auto& [ delta, phi, treeSize, visiting ] = this->lookupTTable(state);
+    visiting = true;
+    if (this->dfpnTTable.size() >= 3600000)
+        std::cout << std::string(state) << std::endl << deltaThreshold << ',' << phiThreshold << std::endl;
+    this->smallTreeGC();
 
-void DFPN::RID(Board state, int deltaThreshold, int phiThreshold, bool myKing, bool opponentKing, bool isMating, std::unordered_set<Board, Zobrist>& history, std::unordered_map<Board, Action, Zobrist>& tsumeMap) {
-    auto& [ delta, phi ] = this->lookupTTable(state);
-
-    if (deltaThreshold <= delta || phiThreshold <= phi)
+    if (deltaThreshold <= delta || phiThreshold <= phi) {
+        visiting = false;
         return;
+    }
     
     std::vector<Action> legalActions = myKing ? state.getKActions(state.currentColour) : state.getNKActions(state.currentColour);
 
@@ -35,8 +37,7 @@ void DFPN::RID(Board state, int deltaThreshold, int phiThreshold, bool myKing, b
         statecpy.inflict(state.currentColour, legalActions[i]);
         statecpy.changeTurn();
 
-        if (history.find(statecpy) == history.end() &&
-            (!isMating || statecpy.getAttackers(state.currentColour, statecpy.pieces[kingOf(!state.currentColour)].first()))) {
+        if (!isMating || statecpy.getAttackers(state.currentColour, statecpy.pieces[kingOf(!state.currentColour)].first())) {
             filteredActions.push_back(legalActions[i]);
             filteredBoards.push_back(statecpy);
         }
@@ -46,22 +47,25 @@ void DFPN::RID(Board state, int deltaThreshold, int phiThreshold, bool myKing, b
 
     if (filteredCount == 0) {
         delta = 0;
-        phi = INFINITY;
+        phi = LULFINITY;
+        visiting = false;
         return;
     }
 
-    delta = deltaThreshold, phi = phiThreshold;
-
     while (true) {
         int phiSum = 0;
-        int deltaMin = INFINITY;
+        treeSize = 0;
+        int deltaMin = LULFINITY;
         int phiMin = 0;
-        int deltaSecondMin = INFINITY;
+        int deltaSecondMin = LULFINITY;
         Action deltaMinAction;
         Board deltaMinState;
 
         for (int i = 0; i < filteredCount; i++) {
-            auto [subDelta, subPhi] = this->lookupTTable(filteredBoards[i]);
+            auto [ subDelta, subPhi, subTreeSize, subVisiting ] = this->lookupTTable(filteredBoards[i]);
+            if (subVisiting)
+                continue;
+            treeSize += subTreeSize;
             
             if (subDelta < deltaMin) {
                 deltaSecondMin = deltaMin;
@@ -73,11 +77,12 @@ void DFPN::RID(Board state, int deltaThreshold, int phiThreshold, bool myKing, b
                 deltaSecondMin = subDelta;
             }
 
-            if (subPhi == INFINITY) {
-                delta = INFINITY;
+            if (subPhi == LULFINITY) {
+                delta = LULFINITY;
                 phi = 0;
                 if (isMating)
                     tsumeMap[state] = filteredActions[i];
+                visiting = false;
                 return;
             }
 
@@ -87,21 +92,21 @@ void DFPN::RID(Board state, int deltaThreshold, int phiThreshold, bool myKing, b
         if (phiSum >= deltaThreshold || deltaMin >= phiThreshold) {
             delta = phiSum;
             phi = deltaMin;
+            visiting = false;
             return;
         }
 
-        int deltaSecondMinP1 = deltaSecondMin == INFINITY ? INFINITY : deltaSecondMin + 1;
-        int newPhiThreshold = deltaThreshold == INFINITY ? INFINITY : deltaThreshold + phiMin - phiSum;
+        int deltaSecondMinP1 = deltaSecondMin == LULFINITY ? LULFINITY : deltaSecondMin + 1;
+        int newPhiThreshold = deltaThreshold == LULFINITY ? LULFINITY : deltaThreshold + phiMin - phiSum;
 
-        auto [ it, success ] = history.insert(deltaMinState);
-        this->RID(deltaMinState, phiThreshold < deltaSecondMinP1 ? phiThreshold : deltaSecondMinP1, newPhiThreshold, opponentKing, myKing, !isMating, history, tsumeMap);
-        history.erase(it);
+        this->RID(deltaMinState, phiThreshold < deltaSecondMinP1 ? phiThreshold : deltaSecondMinP1, newPhiThreshold, opponentKing, myKing, !isMating, tsumeMap);
     }
+
+    visiting = false;
 }
 
 std::unordered_map<Board, Action, Zobrist> DFPN::solveTsume(Board initialState, bool withAttackingKing) {
     std::unordered_map<Board, Action, Zobrist> tsume;
-    std::unordered_set<Board, Zobrist> history;
-    this->RID(initialState, INFINITY, INFINITY, withAttackingKing, true, true, history, tsume);
+    this->RID(initialState, LULFINITY, LULFINITY, withAttackingKing, true, true, tsume);
     return tsume;
 }
