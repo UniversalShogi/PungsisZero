@@ -40,4 +40,6 @@ float MCTS::simulate(MCTSNode* node) {
     float V = -this->simulate(bestChild);
     bestChild->Q = (bestChild->N * bestChild->Q + V)/(1 + bestChild->N);
     bestChild->N += 1;
+
+    return V;
 }
