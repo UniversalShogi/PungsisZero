@@ -35,7 +35,7 @@ class Kifu {
                 case MOVE:
                     kifu << std::string(FILE_CHAR + action.move.dst / 9 * 3, 3)
                         << std::string(RANK_CHAR + action.move.dst % 9 * 3, 3);
-                    if (PROMOTED[action.move.piece] && !isPawnLike(action.move.piece))
+                    if (PROMOTED[action.move.piece] && !isPawnLike(action.move.piece - 1) && !isRookLike(action.move.piece) && !isBishopLike(action.move.piece))
                         kifu << "成" << std::string(PIECE_CHAR + (action.move.piece - 1) * 3, 3);
                     else
                         kifu << std::string(PIECE_CHAR + action.move.piece * 3, 3);

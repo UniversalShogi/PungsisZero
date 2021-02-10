@@ -53,7 +53,7 @@ class MCTSNode {
         return torch::from_blob(input, {(PIECE_NUMBER + DROP_NUMBER) * 3 + 2, 9, 9}, torch::TensorOptions().dtype(torch::kFloat32)).clone().unsqueeze(0);
     }
 
-    void expandNoisy(MCTSModel model) {
+    float expandNoisy(MCTSModel model) {
         std::vector<Action> availables = state.getKActions(state.currentColour);
         gsl_rng* r = gsl_rng_alloc(gsl_rng_mt19937);
         gsl_rng_set(r, time(NULL));
@@ -80,14 +80,19 @@ class MCTSNode {
 
         this->expanded = true;
 
-        if (this->childs.empty())
-            this->lost = true;
         delete[] theta;
         delete[] alpha;
         gsl_rng_free(r);
+
+        if (this->childs.empty()) {
+            this->lost = true;
+            return -1;
+        }
+
+        return outputs[1][0][0].item<float>();
     }
 
-    void expandSilent(MCTSModel model) {
+    float expandSilent(MCTSModel model) {
         std::vector<Action> availables = state.getKActions(state.currentColour);
         torch::Tensor outputs[2];
 
@@ -106,8 +111,12 @@ class MCTSNode {
 
         this->expanded = true;
 
-        if (this->childs.empty())
+        if (this->childs.empty()) {
             this->lost = true;
+            return -1;
+        }
+        
+        return outputs[1][0][0].item<float>();
     }
 };
 

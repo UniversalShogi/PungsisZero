@@ -11,7 +11,7 @@ set(CMAKE_CXX_STANDARD 17)
 include_directories(${PungsisZero_SOURCE_DIR}/include ${TORCH_INSTALL_PREFIX}/include ${TORCH_INSTALL_PREFIX}/include/torch/csrc/api/include ${GSL_INCLUDE_DIRS})
 link_directories(${PungsisZero_SOURCE_DIR}/lib)
 
-add_compile_options(-march=haswell)
+add_compile_options(-march=haswell -O3)
 
 add_subdirectory(src)
 add_subdirectory(test)

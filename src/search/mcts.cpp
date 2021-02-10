@@ -7,28 +7,15 @@
 float MCTS::simulate(MCTSNode* node) {
     node->N += 1;
 
-    float V;
-
     if (node->lost) {
-        V = -1;
-        return V;
+        return -1;
     }
 
     if (!node->expanded) {
         if (node == this->searchingNode)
-            node->expandNoisy(model);
+            return node->expandNoisy(model);
         else
-            node->expandSilent(model);
-
-        if (node->lost) {
-            V = -1;
-            return V;
-        } else {
-            torch::Tensor outputs[2];
-            model.get()->forward(node->toInput(), outputs);
-            V = outputs[1][0][0].item<float>();
-            return V;
-        }
+            return node->expandSilent(model);
     }
 
     MCTSNode* bestChild = nullptr;
@@ -46,7 +33,7 @@ float MCTS::simulate(MCTSNode* node) {
     if (bestChild == nullptr)
         return 0;
     
-    V = -this->simulate(bestChild);
+    float V = -this->simulate(bestChild);
     bestChild->Q = ((bestChild->N - 1) * bestChild->Q + V)/ bestChild->N;
 
     return V;
