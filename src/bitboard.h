@@ -228,6 +228,15 @@ class alignas(16) BitBoard {
         return parts[1] >> 63 | parts[0] << 1;
     }
 
+    void toInput(float input[FILE_NUMBER][RANK_NUMBER]) const {
+        for (int f = 0; f < FILE_NUMBER; f++)
+            for (int r = 0; r < RANK_NUMBER; r++)
+                if (this->test(toBBIndex(f, r)))
+                    input[f][r] = 1;
+                else
+                    input[f][r] = 0;
+    }
+
     static BitBoard unpextRook(int index, BitBoard& mask) {
         BitBoard bb;
         int count = 0;

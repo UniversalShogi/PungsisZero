@@ -11,15 +11,29 @@
 
 class MCTSActionProvider : public ActionProvider {
     public:
-    MCTS mcts;
-    int depth;
+    MCTS* mcts;
+    int smallDepth;
+    int bigDepth;
+    double startTemp;
+    double endTemp;
+    int halfLife;
+    int naivePlayout;
+    double bigSimuProb;
+    double temp;
     std::string name;
 
-    MCTSActionProvider(MCTSModel model, Board initialState, int depth, std::string name) : mcts(model, initialState), depth(depth), name(name) {}
+    MCTSActionProvider(MCTS* mcts, int smallDepth, int bigDepth, std::string name,
+        double startTemp = 0.8, double endTemp = 0.2, int halfLife = 15, int naivePlayout = 14, double bigSimuProb = 0.25)
+        : mcts(mcts), smallDepth(smallDepth), bigDepth(bigDepth), name(name), startTemp(startTemp)
+        , endTemp(endTemp), halfLife(halfLife), naivePlayout(naivePlayout), bigSimuProb(bigSimuProb), temp(startTemp) {}
 
     Action nextAction(std::vector<Board>& history) override;
     void opponentMove(Action action) override;
     std::string getName() const override;
+
+    ~MCTSActionProvider() override {
+        delete mcts;
+    }
 };
 
 #endif
