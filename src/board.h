@@ -221,23 +221,23 @@ class Board {
     }
 
     void toInput(float binput[PIECE_NUMBER][FILE_NUMBER][RANK_NUMBER], float ninput[DROP_NUMBER]) const {
-        int firstOffset = this->currentColour == 0 ? 0 : PIECE_NUMBER / 2; 
         for (int p = 0; p < PIECE_NUMBER; p++)
-            this->pieces[(p + firstOffset) % PIECE_NUMBER].toInput(binput[p]);
+            this->pieces[p].toInput(binput[p]);
         for (int d = 0; d < DROP_NUMBER; d++)
             ninput[d] = this->graveInfo[d];
     }
 
-    void toFeatureInput(float binput[COLOUR_NUMBER * 3 + 1][FILE_NUMBER][RANK_NUMBER]) {
+    void toFeatureInput(float binput[COLOUR_NUMBER * 3 + 1][FILE_NUMBER][RANK_NUMBER], float* ninput) {
         int ctr = 0;
 
-        for (int i = 0, c = this->currentColour; i < 2; i++, c = !c) {
+        for (int c = 0; c < COLOUR_NUMBER; c++) {
             this->placement[c].toInput(binput[ctr++]);
             this->pawnDropMask[c].toInput(binput[ctr++]);
             this->getPinning(!c, this->pieces[kingOf(c)].first()).toInput(binput[ctr++]);
         }
 
         this->getAttackers(!this->currentColour, this->pieces[kingOf(this->currentColour)].first()).toInput(binput[ctr++]);
+        *ninput = this->currentColour;
     }
 
     std::vector<MoveAction> getNKMoves(int colour);

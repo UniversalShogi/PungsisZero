@@ -21,6 +21,7 @@ class MCTSActionProvider : public ActionProvider {
     double bigSimuProb;
     double temp;
     std::string name;
+    std::vector<MCTSNode*> samples;
 
     MCTSActionProvider(MCTS* mcts, int smallDepth, int bigDepth, std::string name,
         double startTemp = 0.8, double endTemp = 0.2, int halfLife = 15, int naivePlayout = 14, double bigSimuProb = 0.25)

@@ -85,7 +85,7 @@ class MCTSModelImpl : public Module {
 
     MCTSModelImpl(int blocks, int channels, int poolBlocks, int poolTrunk, int policyHeadChannels, int valueHeadChannels, int finalValueHeadChannels) :
         binputLayer(register_module("binputLayer", Conv2d(Conv2dOptions(91, channels, 5).stride(1).padding(2)))),
-        ninputLayer(register_module("ninputLayer", Linear(LinearOptions(42, channels)))),
+        ninputLayer(register_module("ninputLayer", Linear(LinearOptions(43, channels)))),
         trunkEnd(register_module("trunkEnd", Sequential(
             BatchNorm2d(BatchNorm2dOptions(channels)),
             ReLU()

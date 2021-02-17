@@ -22,7 +22,7 @@ float MCTS::simulate(MCTSNode* node) {
     float bestPuct = -std::numeric_limits<float>::infinity();
 
     for (auto& [action, child] : node->childs) {
-        int Q = child->N == 0 ? node->Q - (node == searchingNode ? fpuRoot : fpuNonRoot) * sqrt(node->childP) : child->Q;
+        float Q = child->N == 0 ? node->Q - (node == searchingNode ? fpuRoot : fpuNonRoot) * sqrt(node->childP) : child->Q;
         float puct = Q + puctConstant * child->P * sqrt(node->N - 1 + 0.01f)/(1 + child->N);
 
         if (this->forcedPlayoutEnabled && node == this->searchingNode

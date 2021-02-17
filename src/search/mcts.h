@@ -34,21 +34,26 @@ class MCTSNode {
     MCTSNode() : state(BEMPTY), movecount(-1), parent(nullptr), expanded(false), lost(false), N(0), childP(0), forced(0), Q(0), P(0), activateDFPN(0), childs() {}
     MCTSNode(Board state, MCTSNode* parent) : state(state), movecount(parent->moveCount + 1), parent(parent), expanded(false), lost(false), N(0), childP(0), forced(0), Q(0), P(0), activateDFPN(0), childs() {}
 
-    ~MCTSNode() {
+    void clearChilds() {
         for (auto& [action, node] : childs)
             delete node;
+        this->childs.clear();
+    }
+
+    ~MCTSNode() {
+        clearChilds();
     }
 
     void toInput(torch::Tensor inputs[2]) {
         float binput[PIECE_NUMBER * 3 + COLOUR_NUMBER * 3 + 1][9][9] = {};
-        float ninput[DROP_NUMBER * 3] = {};
+        float ninput[DROP_NUMBER * 3 + 1] = {};
         this->state.toInput(binput, ninput);
         this->parent->state.toInput(&binput[PIECE_NUMBER], &ninput[DROP_NUMBER]);
         this->parent->parent->state.toInput(&binput[PIECE_NUMBER * 2], &ninput[DROP_NUMBER * 2]);
-        this->state.toFeatureInput(&binput[PIECE_NUMBER * 3]);
+        this->state.toFeatureInput(&binput[PIECE_NUMBER * 3], &ninput[DROP_NUMBER * 3]);
         
         inputs[0] = torch::from_blob(binput, {PIECE_NUMBER * 3 + COLOUR_NUMBER * 3 + 1, 9, 9}, torch::TensorOptions().dtype(torch::kFloat32)).clone().to(torch::kCUDA).unsqueeze(0);
-        inputs[1] = torch::from_blob(ninput, {DROP_NUMBER * 3}, torch::TensorOptions().dtype(torch::kFloat32)).clone().to(torch::kCUDA).unsqueeze(0);
+        inputs[1] = torch::from_blob(ninput, {DROP_NUMBER * 3 + 1}, torch::TensorOptions().dtype(torch::kFloat32)).clone().to(torch::kCUDA).unsqueeze(0);
     }
 
     float expandNoisy(MCTSModel model, float dirichletConstant, double dirichletEpsilon, gsl_rng* r) {
@@ -200,17 +205,13 @@ class MCTS {
         MCTSNode* bestChild = searchingNode;
         Action bestAction;
 
-
-        
         for (auto& [action, child] : searchingNode->childs)
             if (child->N > bestN) {
                 bestChild = child;
                 bestN = child->N;
                 bestAction = action;
             }
-
-        float bestPuct = bestChild->Q + puctConstant * bestChild->P * sqrt(searchingNode->N - 1 + 0.01f)/(1 + bestChild->N);
-
+            
         std::vector<double> weights;
 
         for (auto& [action, child] : searchingNode->childs) {
@@ -223,9 +224,11 @@ class MCTS {
                         break;
                     if (child->forced == 0)
                         break;
-                    if (child->Q + puctConstant * child->P * sqrt(searchingNode->N - 1 + 0.01f)/child->N < bestPuct) {
+                    if (child->Q + puctConstant * child->P * sqrt(searchingNode->N - 2 + 0.01f)/child->N
+                        < bestChild->Q + puctConstant * bestChild->P * sqrt(searchingNode->N - 2 + 0.01f)/(bestChild->N + 1)) {
                         child->forced--;
                         child->N--;
+                        searchingNode->N--;
                     } else
                         break;
                 }
@@ -236,9 +239,13 @@ class MCTS {
 
         std::discrete_distribution<int> dis(weights.begin(), weights.end());
 
-        auto [action, child] = searchingNode->childs[dis(eng)];
-        this->searchingNode = child;
-        return action;
+        auto [selectedAction, selectedChild] = searchingNode->childs[dis(eng)];
+
+        for (auto& [action, child] : searchingNode->childs)
+            if (child != selectedChild)
+                child->clearChilds();
+        this->searchingNode = selectedChild;
+        return selectedAction;
     }
 
     Action selectByNaivePolicy() {
