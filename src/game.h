@@ -15,7 +15,7 @@ class Game {
     ActionProvider* sente;
     ActionProvider* gote;
     int winner = -1;
-    int movecount = 0;
+    int moveCount = 0;
     bool ended = false;
     bool restricted;
 
@@ -68,7 +68,7 @@ class Game {
             current.inflict(current.currentColour, action);
             current.changeTurn();
             history.push_back(Board(current));
-            movecount++;
+            moveCount++;
         }
     }
 };

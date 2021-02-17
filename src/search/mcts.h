@@ -17,23 +17,19 @@
 
 class MCTSNode {
     public:
-    Board state;
     int moveCount;
-    MCTSNode* parent;
     bool expanded;
     bool lost;
     int N;
     float childP;
-    int movecount;
     int forced;
     float Q;
     float P;
     float activateDFPN;
     std::vector<std::pair<Action, MCTSNode*>> childs;
 
-    MCTSNode() : state(BEMPTY), movecount(-1), parent(nullptr), expanded(false), lost(false), N(0), childP(0), forced(0), Q(0), P(0), activateDFPN(0), childs() {}
-    MCTSNode(Board state, MCTSNode* parent) : state(state), movecount(parent->moveCount + 1), parent(parent), expanded(false), lost(false), N(0), childP(0), forced(0), Q(0), P(0), activateDFPN(0), childs() {}
-
+    MCTSNode(int moveCount) : moveCount(moveCount), expanded(false), lost(false), N(0), childP(0), forced(0), Q(0), P(0), activateDFPN(0), childs() {}
+    
     void clearChilds() {
         for (auto& [action, node] : childs)
             delete node;
@@ -44,20 +40,20 @@ class MCTSNode {
         clearChilds();
     }
 
-    void toInput(torch::Tensor inputs[2]) {
+    void toInput(Board states[3], torch::Tensor inputs[2]) {
         float binput[PIECE_NUMBER * 3 + COLOUR_NUMBER * 3 + 1][9][9] = {};
         float ninput[DROP_NUMBER * 3 + 1] = {};
-        this->state.toInput(binput, ninput);
-        this->parent->state.toInput(&binput[PIECE_NUMBER], &ninput[DROP_NUMBER]);
-        this->parent->parent->state.toInput(&binput[PIECE_NUMBER * 2], &ninput[DROP_NUMBER * 2]);
-        this->state.toFeatureInput(&binput[PIECE_NUMBER * 3], &ninput[DROP_NUMBER * 3]);
+        states[2].toInput(binput, ninput);
+        states[1].toInput(&binput[PIECE_NUMBER], &ninput[DROP_NUMBER]);
+        states[0].toInput(&binput[PIECE_NUMBER * 2], &ninput[DROP_NUMBER * 2]);
+        states[2].toFeatureInput(&binput[PIECE_NUMBER * 3], &ninput[DROP_NUMBER * 3]);
         
         inputs[0] = torch::from_blob(binput, {PIECE_NUMBER * 3 + COLOUR_NUMBER * 3 + 1, 9, 9}, torch::TensorOptions().dtype(torch::kFloat32)).clone().to(torch::kCUDA).unsqueeze(0);
         inputs[1] = torch::from_blob(ninput, {DROP_NUMBER * 3 + 1}, torch::TensorOptions().dtype(torch::kFloat32)).clone().to(torch::kCUDA).unsqueeze(0);
     }
 
-    float expandNoisy(MCTSModel model, float dirichletConstant, double dirichletEpsilon, gsl_rng* r) {
-        std::vector<Action> availables = state.getKActions(state.currentColour);
+    float expandNoisy(MCTSModel model, Board states[3], float dirichletConstant, double dirichletEpsilon, gsl_rng* r) {
+        std::vector<Action> availables = states[2].getKActions(states[2].currentColour);
         double* alpha = new double[availables.size()];
         for (int i = 0; i < availables.size(); i++)
             alpha[i] = dirichletConstant;
@@ -65,7 +61,7 @@ class MCTSNode {
         double* theta = new double[availables.size()];
         gsl_ran_dirichlet(r, availables.size(), alpha, theta);
         torch::Tensor inputs[2];
-        this->toInput(inputs);
+        this->toInput(states, inputs);
         torch::Tensor outputs[3];
 
         model->forward(inputs[0], inputs[1], outputs);
@@ -73,11 +69,7 @@ class MCTSNode {
 
         for (int i = 0; i < availables.size(); i++) {
             Action action = availables[i];
-            Board statecpy(state);
-            statecpy.inflict(state.currentColour, action);
-            statecpy.changeTurn();
-            
-            MCTSNode* child = new MCTSNode(statecpy, this);
+            MCTSNode* child = new MCTSNode(this->moveCount + 1);
             child->P = (1 - dirichletEpsilon) * outputs[0][0][action.toModelOutput()][action.getPrincipalPosition() / 9][action.getPrincipalPosition() % 9].item<float>() + dirichletEpsilon * theta[i];
             childs.push_back(std::make_pair(action, child));
         }
@@ -95,10 +87,10 @@ class MCTSNode {
         return outputs[1][0][0].item<float>() - outputs[1][0][2].item<float>();
     }
 
-    float expandSilent(MCTSModel model) {
-        std::vector<Action> availables = state.getKActions(state.currentColour);
+    float expandSilent(MCTSModel model, Board states[3]) {
+        std::vector<Action> availables = states[2].getKActions(states[2].currentColour);
         torch::Tensor inputs[2];
-        this->toInput(inputs);
+        this->toInput(states, inputs);
         torch::Tensor outputs[3];
 
         model->forward(inputs[0], inputs[1], outputs);
@@ -106,11 +98,7 @@ class MCTSNode {
 
         for (int i = 0; i < availables.size(); i++) {
             Action action = availables[i];
-            Board statecpy(state);
-            statecpy.inflict(state.currentColour, action);
-            statecpy.changeTurn();
-            
-            MCTSNode* child = new MCTSNode(statecpy, this);
+            MCTSNode* child = new MCTSNode(this->moveCount + 1);
             child->P = outputs[0][0][action.toModelOutput()][action.getPrincipalPosition() / 9][action.getPrincipalPosition() % 9].item<float>();
             childs.push_back(std::make_pair(action, child));
         }
@@ -127,9 +115,6 @@ class MCTSNode {
 };
 
 class MCTS {
-    private:
-    MCTSNode emptyCyclicNode;
-
     public:
     MCTSModel model;
     MCTSNode* rootNode;
@@ -146,30 +131,31 @@ class MCTS {
     float dirichletEpsilon;
     float forcedSimuConstant;
 
-    MCTS(MCTSModel model, Board initialState, bool dirichletEnabled = true, bool forcedPlayoutEnabled = true, float fpuRoot = 0.0f, float fpuNonRoot = 0.2f,
+    MCTS(MCTSModel model, bool dirichletEnabled = true, bool forcedPlayoutEnabled = true, float fpuRoot = 0.0f, float fpuNonRoot = 0.2f,
         float puctConstant = 1.1f, double dirichletConstant = 0.15, float dirichletEpsilon = 0.25,
         float forcedSimuConstant = 2)
         : model(model), rd(), eng(rd()), r(gsl_rng_alloc(gsl_rng_mt19937)), dirichletEnabled(dirichletEnabled), forcedPlayoutEnabled(forcedPlayoutEnabled), fpuRoot(fpuRoot), fpuNonRoot(fpuNonRoot),
         puctConstant(puctConstant), dirichletConstant(dirichletConstant), dirichletEpsilon(dirichletEpsilon),
         forcedSimuConstant(forcedSimuConstant) {
         this->model->eval();
-        emptyCyclicNode = MCTSNode();
-        emptyCyclicNode.parent = &emptyCyclicNode;
-        rootNode = new MCTSNode(initialState, &emptyCyclicNode);
+        rootNode = new MCTSNode(0);
         searchingNode = rootNode;
         gsl_rng_set(r, rd());
     }
 
-    float simulate(MCTSNode* node);
+    void stimulateSearching(Board states[3]) {
+        if (!this->searchingNode->expanded)
+            this->searchingNode->expandSilent(model, states);
+    }
 
-    void search(int depth) {
+    float simulate(MCTSNode* node, Board states[3]);
+
+    void search(Board states[3], int depth) {
         for (int i = 0; i < depth; i++)
-            simulate(this->searchingNode);
+            simulate(this->searchingNode, states);
     }
 
     void opponentMove(Action opponentAction) {
-        if (!this->searchingNode->expanded)
-            this->searchingNode->expandSilent(model);
         for (auto& [action, child] : searchingNode->childs)
             if (action == opponentAction) {
                 this->searchingNode = child;
@@ -197,8 +183,6 @@ class MCTS {
     }
 
     Action selectByProportionalPolicy(double temperature) {
-        if (!searchingNode->expanded)
-            searchingNode->expandSilent(model);
         if (searchingNode->lost)
             return Action();
         int bestN = -1;
@@ -241,16 +225,16 @@ class MCTS {
 
         auto [selectedAction, selectedChild] = searchingNode->childs[dis(eng)];
 
+#ifdef PROP_GC
         for (auto& [action, child] : searchingNode->childs)
             if (child != selectedChild)
                 child->clearChilds();
+#endif
         this->searchingNode = selectedChild;
         return selectedAction;
     }
 
     Action selectByNaivePolicy() {
-        if (!searchingNode->expanded)
-            searchingNode->expandSilent(model);
         std::vector<double> weights;
 
         if (searchingNode->lost)
