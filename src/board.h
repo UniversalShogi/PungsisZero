@@ -227,6 +227,21 @@ class Board {
             ninput[d] = this->graveInfo[d];
     }
 
+    static void toInputs(int n, float (*binput)[FILE_NUMBER][RANK_NUMBER]
+        , float* ninput, Board* states) {
+        for (int i = 0; i < n; i++)
+            states[n - i - 1].toInput(&binput[PIECE_NUMBER * i], &ninput[DROP_NUMBER * i]);
+        states[n - 1].toFeatureInput(&binput[PIECE_NUMBER * n], &ninput[DROP_NUMBER * n]);
+    }
+
+    static void toInputs(int n, float (*binput)[FILE_NUMBER][RANK_NUMBER]
+        , float* ninput, std::vector<Board> states) {
+        for (int i = 0; i < n; i++)
+            states[n - i - 1].toInput(&binput[PIECE_NUMBER * i], &ninput[DROP_NUMBER * i]);
+        states[n - 1].toFeatureInput(&binput[PIECE_NUMBER * n], &ninput[DROP_NUMBER * n]);
+    }
+
+
     void toFeatureInput(float binput[COLOUR_NUMBER * 3 + 1][FILE_NUMBER][RANK_NUMBER], float* ninput) {
         int ctr = 0;
 

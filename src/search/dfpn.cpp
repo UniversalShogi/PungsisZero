@@ -14,11 +14,24 @@
 #include <chrono>
 
 void DFPN::RID(Board state, int deltaThreshold, int phiThreshold, bool myKing, bool opponentKing, bool isMating, std::unordered_map<Board, Action, Zobrist>& tsumeMap) {
+    if (this->aborted)
+        return;
+
     auto& [ delta, phi, treeSize, visiting ] = this->lookupTTable(state);
     visiting = true;
-    if (this->dfpnTTable.size() >= 3600000)
-        std::cout << std::string(state) << std::endl << deltaThreshold << ',' << phiThreshold << std::endl;
-    this->smallTreeGC();
+
+    if (this->dfpnTTable.size() > entryThreshold)
+        switch (gcMode) {
+            case ABORT:
+                this->aborted = true;
+                return;
+            case GC1:
+                this->smallTreeGC1();
+                break;
+            case GC2:
+                this->smallTreeGC2(this->gc2Threshold);
+                break;
+        }
 
     if (deltaThreshold <= delta || phiThreshold <= phi) {
         visiting = false;
@@ -100,13 +113,21 @@ void DFPN::RID(Board state, int deltaThreshold, int phiThreshold, bool myKing, b
         int newPhiThreshold = deltaThreshold == LULFINITY ? LULFINITY : deltaThreshold + phiMin - phiSum;
 
         this->RID(deltaMinState, phiThreshold < deltaSecondMinP1 ? phiThreshold : deltaSecondMinP1, newPhiThreshold, opponentKing, myKing, !isMating, tsumeMap);
+
+        if (this->aborted)
+            return;
     }
 
     visiting = false;
 }
 
-std::unordered_map<Board, Action, Zobrist> DFPN::solveTsume(Board initialState, bool withAttackingKing) {
-    std::unordered_map<Board, Action, Zobrist> tsume;
+bool DFPN::solveTsume(Board initialState, bool withAttackingKing, std::unordered_map<Board, Action, Zobrist>& tsume) {
     this->RID(initialState, LULFINITY, LULFINITY, withAttackingKing, true, true, tsume);
-    return tsume;
+
+    if (this->aborted) {
+        this->aborted = false;
+        return false;
+    }
+
+    return true;
 }
