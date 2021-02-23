@@ -4,6 +4,7 @@
 #include "action.h"
 #include "board.h"
 #include "search/mctsmodel.h"
+#include "train.h"
 
 #include <gsl/gsl_rng.h>
 #include <gsl/gsl_randist.h>
@@ -27,11 +28,10 @@ class BatchedMCTSNode {
     int forced;
     float Q;
     float P;
-    float activateDFPN;
     std::vector<std::pair<Action, BatchedMCTSNode*>> childs;
 
-    BatchedMCTSNode(BatchedMCTSNode* parent = nullptr) : parent(parent), moveCount(parent == nullptr ? 0 : parent->moveCount + 1), expanded(false), lost(false), N(0), childP(0), forced(0), Q(0), P(0), activateDFPN(0), childs() {}
-    
+    BatchedMCTSNode(BatchedMCTSNode* parent = nullptr) : parent(parent), moveCount(parent == nullptr ? 0 : parent->moveCount + 1), expanded(false), lost(false), N(0), childP(0), forced(0), Q(0), P(0), childs() {}
+
     void clearChilds() {
         for (auto& [action, node] : childs)
             delete node;
@@ -70,7 +70,7 @@ class BatchedMCTSTree {
     }
 
     void addDirichlet(gsl_rng* r);
-    float expand(const std::vector<Action>& availables, int j, torch::Tensor outputs[3]);
+    float expand(const std::vector<Action>& availables, int j, torch::Tensor outputs[2]);
     void expandRaw(const std::vector<Action>& availables);
 
     void opponentMove(Action opponentAction) {
@@ -111,7 +111,7 @@ class BatchedMCTSPlayer {
     std::vector<BatchedMCTSNode*> samples;
     bool isFull;
 
-    BatchedMCTSPlayer(BatchedMCTSTree* tree, int smallDepth, int bigDepth, std::string name,
+    BatchedMCTSPlayer(BatchedMCTSTree* tree, int smallDepth, int bigDepth, const std::string& name,
         double startTemp = 0.8, double endTemp = 0.2, int halfLife = 15, int naivePlayout = 7, double bigSimuProb = 0.25)
         : tree(tree), moveCount(0), smallDepth(smallDepth), bigDepth(bigDepth), currDepth(0), name(name), samples(), startTemp(startTemp)
         , endTemp(endTemp), halfLife(halfLife), naivePlayout(naivePlayout), bigSimuProb(bigSimuProb), temp(startTemp), isFull(false) {}
@@ -135,7 +135,7 @@ class BatchedMCTSGame {
     bool ended = false;
     int moveCountThreshold;
 
-    BatchedMCTSGame(BatchedMCTSPlayer* sente, BatchedMCTSPlayer* gote, Board initState = Board(), int moveCountThreshold = 500)
+    BatchedMCTSGame(BatchedMCTSPlayer* sente, BatchedMCTSPlayer* gote, Board initState = Board(), int moveCountThreshold = 300)
         : sente(sente), gote(gote), history(), actionHistory(), moveCountThreshold(moveCountThreshold) {
         sente->game = this;
         gote->game = this;
@@ -158,12 +158,35 @@ class BatchedMCTSGame {
     }
 };
 
+inline BatchedMCTSTree* newTreeCopy(BatchedMCTSTree* sampleTree) {
+    return new BatchedMCTSTree(sampleTree->dirichletEnabled
+        , sampleTree->forcedPlayoutEnabled, sampleTree->fpuRoot
+        , sampleTree->fpuNonRoot, sampleTree->puctConstant
+        , sampleTree->dirichletConstant, sampleTree->dirichletEpsilon
+        , sampleTree->forcedSimuConstant);
+}
+
+inline BatchedMCTSPlayer* newPlayerCopy(BatchedMCTSPlayer* samplePlayer) {
+    return new BatchedMCTSPlayer(newTreeCopy(samplePlayer->tree), samplePlayer->smallDepth
+        , samplePlayer->bigDepth, samplePlayer->name, samplePlayer->startTemp
+        , samplePlayer->endTemp, samplePlayer->halfLife, samplePlayer->naivePlayout
+        , samplePlayer->bigSimuProb);
+}
+
+inline BatchedMCTSGame* newGameCopy(BatchedMCTSGame* sampleGame) {
+    return new BatchedMCTSGame(newPlayerCopy(sampleGame->sente),
+        newPlayerCopy(sampleGame->gote),
+        sampleGame->history.front(),
+        sampleGame->moveCountThreshold
+    );
+}
+
 template <int n = 3>
 class BatchedMCTS {
     public:
-    MCTSModel model;
-    std::random_device rd;
-    std::default_random_engine eng;
+    GameTrainer<n>* trainer;
+    bool saveGames;
+
     gsl_rng* r;
     std::vector<BatchedMCTSGame*> games;
     std::vector<BatchedMCTSTree*> pending;
@@ -172,48 +195,66 @@ class BatchedMCTS {
     float (*ninput)[DROP_NUMBER * n + 1];
     int gameCtr;
     int maxGames;
-    Board initialState;
 
-    BatchedMCTS(MCTSModel model, Board initialState = Board(), int gameCount = 100, int maxGames = 1000)
-        : model(model), rd(), eng(rd()), r(gsl_rng_alloc(gsl_rng_mt19937)), games(), pending()
-        , gameCtr(0), maxGames(maxGames), initialState(initialState) {
-        this->model->eval();
-        gsl_rng_set(r, rd());
+    BatchedMCTS(GameTrainer<n>* trainer, bool saveGames, BatchedMCTSGame* sampleGame, int gameCount = 100, int maxGames = 1000)
+        : trainer(trainer), saveGames(saveGames), r(gsl_rng_alloc(gsl_rng_mt19937)), games(), pending()
+        , gameCtr(0), maxGames(maxGames) {
+        trainer->model->eval();
+        gsl_rng_set(r, trainer->rd());
 
         gameCtr += gameCount;
         binput = new float[gameCount][PIECE_NUMBER * n + COLOUR_NUMBER * 3 + 1][FILE_NUMBER][RANK_NUMBER];
         ninput = new float[gameCount][DROP_NUMBER * n + 1];
 
-        for (int i = 0; i < gameCount; i++) {
-            games.push_back(new BatchedMCTSGame(
-                new BatchedMCTSPlayer(new BatchedMCTSTree(), 200, 600, "IDIOT_SENTE"),
-                new BatchedMCTSPlayer(new BatchedMCTSTree(), 200, 600, "IDIOT_GOTE"),
-                initialState
-            ));
-        }
+        for (int i = 0; i < gameCount; i++)
+            games.push_back(newGameCopy(sampleGame));
     }
 
     void step() {
+        torch::NoGradGuard guard;
         for (int i = 0; i < games.size(); i++) {
             BatchedMCTSGame* game = games[i];
             std::vector<Board> states(game->history.end() - std::min<int>(n, game->history.size()), game->history.end());
 
-            while (!game->getCurrentPlayer()->step(this->eng, this->r, states)) {
+            while (!game->getCurrentPlayer()->step(this->trainer->eng, this->r, states)) {
                 states = std::vector<Board>(game->history.end() - std::min<int>(n, game->history.size()), game->history.end());
                 if (game->ended) {
-                    delete game;
-                    game = nullptr;
+                    if (saveGames) {
+                        GameResult result;
+                        result.winner = game->winner;
+                        result.actionHistory = game->actionHistory;
+
+                        for (auto& node : game->sente->samples) {
+                            Sample sample;
+                            sample.moveCount = node->moveCount;
+                            
+                            for (auto& [action, child] : node->childs)
+                                sample.mcts_policy.emplace_back(action, child->N);
+                            result.senteSamples.push_back(sample);
+                        }
+
+                        for (auto& node : game->gote->samples) {
+                            Sample sample;
+                            sample.moveCount = node->moveCount;
+                            
+                            for (auto& [action, child] : node->childs)
+                                sample.mcts_policy.emplace_back(action, child->N);
+                            result.goteSamples.push_back(sample);
+                        }
+
+                        trainer->serialize(result);
+                    } else
+                        trainer->arenaResults.push_back(game->winner);
 
                     if (gameCtr + 1 < maxGames) {
                         gameCtr++;
-                        
-                        games[i] = new BatchedMCTSGame(
-                            new BatchedMCTSPlayer(new BatchedMCTSTree(), 200, 600, "IDIOT_SENTE"),
-                            new BatchedMCTSPlayer(new BatchedMCTSTree(), 200, 600, "IDIOT_GOTE"),
-                            initialState
-                        );
+                        BatchedMCTSGame* newGame = newGameCopy(game);
+                        games[i] = newGame;
+                        delete game;
                         game = games[i];
                     } else {
+                        delete game;
+                        game = nullptr;
                         games.erase(games.begin() + i--);
                         break;
                     }
@@ -228,12 +269,15 @@ class BatchedMCTS {
             this->pendingStates.push_back(std::move(states));
         }
 
+        if (pending.empty())
+            return;
+
         for (int j = 0; j < pendingStates.size(); j++)
             Board::toInputs(n, binput[j], ninput[j], pendingStates[j]);
-        torch::Tensor outputs[3];
-        model->forward(
-            torch::from_blob(binput, { (int) pendingStates.size(), PIECE_NUMBER * 3 + COLOUR_NUMBER * 3 + 1, FILE_NUMBER, RANK_NUMBER }, torch::TensorOptions().dtype(torch::kFloat32)).clone().to(torch::kCUDA),
-            torch::from_blob(ninput, { (int) pendingStates.size(), DROP_NUMBER * 3 + 1 }, torch::TensorOptions().dtype(torch::kFloat32)).clone().to(torch::kCUDA),
+        torch::Tensor outputs[2];
+        trainer->model->forward(
+            torch::from_blob(binput, { (int) pendingStates.size(), PIECE_NUMBER * n + COLOUR_NUMBER * 3 + 1, FILE_NUMBER, RANK_NUMBER }, torch::TensorOptions().dtype(torch::kFloat32)).to(torch::kCUDA),
+            torch::from_blob(ninput, { (int) pendingStates.size(), DROP_NUMBER * n + 1 }, torch::TensorOptions().dtype(torch::kFloat32)).to(torch::kCUDA),
             outputs
         );
 
@@ -252,6 +296,8 @@ class BatchedMCTS {
         for (auto& game : games)
             delete game;
         gsl_rng_free(r);
+        delete[] binput;
+        delete[] ninput;
     }
 };
 

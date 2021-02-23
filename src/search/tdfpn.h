@@ -35,7 +35,7 @@ class TDFPN {
     TDFPNNode* LULFINITY_DELTA;
 
     TDFPN() {
-        LULFINITY_DELTA = new TDFPNNode{Action(MoveAction{0, 0, false}), Board(), LULFINITY, 0, false, std::vector<TDFPNNode*>()};
+        LULFINITY_DELTA = new TDFPNNode{Action(MoveAction(0, 0, 0, false)), Board(), LULFINITY, 0, false, std::vector<TDFPNNode*>()};
     }
 
     private:

@@ -87,7 +87,7 @@ void TDFPN::RID(TDFPNNode* node, int deltaThreshold, int phiThreshold, bool myKi
 std::unordered_map<Board, Action, Zobrist> TDFPN::solveTsume(Board initialState, bool withAttackingKing) {
     std::unordered_map<Board, Action, Zobrist> tsume;
     std::vector<Board> history;
-    TDFPNNode* rootNode = new TDFPNNode{Action(MoveAction{0, 0, false}), initialState, 1, 1, false, std::vector<TDFPNNode*>()};
+    TDFPNNode* rootNode = new TDFPNNode{Action(MoveAction(0, 0, 0, false)), initialState, 1, 1, false, std::vector<TDFPNNode*>()};
     history.push_back(initialState);
     this->RID(rootNode, LULFINITY, LULFINITY, withAttackingKing, true, true, history, tsume);
     delete rootNode;

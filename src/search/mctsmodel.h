@@ -63,10 +63,10 @@ class AutoTwinGBSImpl : public Module {
     Conv2d twinConv[2];
     GlobalBiasStructure gbsHead;
 
-    AutoTwinGBSImpl(int inChannels, int gChannels) : twinConv({
+    AutoTwinGBSImpl(int inChannels, int gChannels) : twinConv{
         register_module("conv1", Conv2d(Conv2dOptions(inChannels, gChannels, 1).stride(1))),
         register_module("conv2", Conv2d(Conv2dOptions(inChannels, gChannels, 1).stride(1))),
-    }), gbsHead(register_module("gbsHead", GlobalBiasStructure(gChannels, gChannels))) {}
+    }, gbsHead(register_module("gbsHead", GlobalBiasStructure(gChannels, gChannels))) {}
 
     torch::Tensor forward(const torch::Tensor& input) {
         return gbsHead->forward(twinConv[0]->forward(input), twinConv[1]->forward(input));
@@ -76,6 +76,7 @@ TORCH_MODULE(AutoTwinGBS);
 
 class MCTSModelImpl : public Module {
     public:
+    int n;
     Conv2d binputLayer;
     Linear ninputLayer;
     std::vector<Sequential> resBlocks;
@@ -83,10 +84,9 @@ class MCTSModelImpl : public Module {
     Sequential policyHead;
     Sequential valueHead;
     Softmax wdlProb;
-    Tanh activateDFPN; // In this position, can DFPN find mate within 100K nodes?
 
     MCTSModelImpl(int n, int blocks, int channels, int poolBlocks, int poolTrunk, int policyHeadChannels, int valueHeadChannels, int finalValueHeadChannels) :
-        binputLayer(register_module("binputLayer", Conv2d(Conv2dOptions(PIECE_NUMBER * n + COLOUR_NUMBER * 3 + 1, channels, 5).stride(1).padding(2)))),
+        n(n), binputLayer(register_module("binputLayer", Conv2d(Conv2dOptions(PIECE_NUMBER * n + COLOUR_NUMBER * 3 + 1, channels, 5).stride(1).padding(2)))),
         ninputLayer(register_module("ninputLayer", Linear(LinearOptions(DROP_NUMBER * n + 1, channels)))),
         trunkEnd(register_module("trunkEnd", Sequential(
             BatchNorm2d(BatchNorm2dOptions(channels)),
@@ -108,8 +108,7 @@ class MCTSModelImpl : public Module {
             ReLU(),
             Linear(LinearOptions(finalValueHeadChannels, 4))
         ))),
-        wdlProb(register_module("wdlProb", Softmax(SoftmaxOptions(1)))),
-        activateDFPN(register_module("activateDFPN", Tanh())) {
+        wdlProb(register_module("wdlProb", Softmax(SoftmaxOptions(1)))) {
         for (int i = 0; i < blocks; i++)
             if (blocks - i <= poolBlocks)
                 resBlocks.push_back(register_module("resBlock_p" + std::to_string(i), Sequential(
@@ -132,15 +131,14 @@ class MCTSModelImpl : public Module {
                 )));
     }
 
-    void forward(torch::Tensor binput, const torch::Tensor& ninput, torch::Tensor output[3]) {
+    void forward(torch::Tensor binput, const torch::Tensor& ninput, torch::Tensor output[2]) {
         binput = binputLayer->forward(binput) + ninputLayer->forward(ninput).unsqueeze(2).unsqueeze(3);
-        for (int i = 0; i < resBlocks.size(); i++)
-            binput = resBlocks[i]->forward(binput) + binput;
+        for (auto& resBlock : resBlocks)
+            binput = resBlock->forward(binput) + binput;
         output[0] = policyHead->forward(binput);
         binput = valueHead->forward(binput);
         std::vector<torch::Tensor> splitted = torch::split_with_sizes(binput, {3, 1}, 1);
         output[1] = wdlProb->forward(splitted[0]);
-        output[2] = activateDFPN->forward(splitted[1]);
     }
 };
 TORCH_MODULE(MCTSModel);

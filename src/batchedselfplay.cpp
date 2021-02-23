@@ -155,8 +155,11 @@ void BatchedMCTSGame::act(Action action, gsl_rng* r) {
         current.inflict(current.currentColour, action);
         current.changeTurn();
         history.push_back(Board(current));
-        if (moveCount++ == moveCountThreshold)
+
+        if (moveCount++ == moveCountThreshold) {
+            winner = -1;
             this->ended = true;
+        }
     }        
 }
 
@@ -220,10 +223,9 @@ void BatchedMCTSTree::addDirichlet(gsl_rng* r) {
 void BatchedMCTSTree::expandRaw(const std::vector<Action>& availables) {
     if (searchingNode->expanded)
         return;
-    for (int i = 0; i < availables.size(); i++) {
-        Action action = availables[i];
+    for (auto& action : availables) {
         BatchedMCTSNode* child = new BatchedMCTSNode(searchingNode);
-        searchingNode->childs.push_back(std::make_pair(action, child));
+        searchingNode->childs.emplace_back(action, child);
     }
 
     searchingNode->expanded = true;
@@ -232,14 +234,11 @@ void BatchedMCTSTree::expandRaw(const std::vector<Action>& availables) {
         searchingNode->lost = true;
 }
 
-float BatchedMCTSTree::expand(const std::vector<Action>& availables, int j, torch::Tensor outputs[3]) {
-    searchingNode->activateDFPN = outputs[2][j][0].item<float>();
-
-    for (int i = 0; i < availables.size(); i++) {
-        Action action = availables[i];
+float BatchedMCTSTree::expand(const std::vector<Action>& availables, int j, torch::Tensor outputs[2]) {
+    for (auto& action : availables) {
         BatchedMCTSNode* child = new BatchedMCTSNode(searchingNode);
         child->P = outputs[0][j][action.toModelOutput()][action.getPrincipalPosition() / 9][action.getPrincipalPosition() % 9].item<float>();
-        searchingNode->childs.push_back(std::make_pair(action, child));
+        searchingNode->childs.emplace_back(action, child);
     }
 
     searchingNode->expanded = true;

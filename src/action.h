@@ -12,6 +12,17 @@ class MoveAction {
     int dst;
     bool promote;
 
+    MoveAction(int piece, int src, int dst, int promote) : piece(piece), src(src), dst(dst), promote(promote) {}
+    MoveAction(int hash) {
+        this->piece = hash & 0b11111;
+        hash >>= 5;
+        this->src = hash & 0b1111111;
+        hash >>= 7;
+        this->dst = hash & 0b1111111;
+        hash >>= 7;
+        this->promote = hash & 0b1;
+    }
+
     operator std::string() const {
         std::string out = std::to_string(this->src / 9) + ',' + std::to_string(this->src % 9) + "->" + std::to_string(this->dst / 9) + ',' + std::to_string(this->dst % 9);
         if (this->promote) out += 'P';
@@ -28,6 +39,13 @@ class DropAction {
     int graveIndex;
     int dst;
 
+    DropAction(int graveIndex, int dst) : graveIndex(graveIndex), dst(dst) {}
+    DropAction(int hash) {
+        this->graveIndex = hash & 0b1111;
+        hash >>= 4;
+        this->dst = hash & 0b1111111;
+    }
+
     operator std::string() const {
         std::string out = std::to_string(this->graveIndex) + "->" + std::to_string(this->dst / 9) + ',' + std::to_string(this->dst % 9);
         return out;
@@ -43,7 +61,7 @@ enum ActionType {
     DROP,
     RESIGN,
     ILLEGAL,
-    SENNICHITE,
+    SENNICHITE, 
     JISHOGI
 };
 
@@ -61,6 +79,33 @@ class Action {
     Action(DropAction drop) : drop(drop), type(DROP) {}
     Action() : type(RESIGN) {}
     Action(ActionType type) : type(type) {}
+    Action(const Action& other) {
+        this->type = other.type;
+
+        if (this->type == MOVE)
+            this->move = other.move;
+        else if (this->type == DROP)
+            this->drop = other.drop;
+    }
+    Action(int hash) {
+        this->type = (ActionType) (hash & 0b111);
+        hash >>= 3;
+        
+        if (this->type == MOVE)
+            this->move = MoveAction(hash);
+        else if (this->type == DROP)
+            this->drop = DropAction(hash);        
+    }
+
+    Action& operator=(const Action& other) {
+        this->type = other.type;
+
+        if (this->type == MOVE)
+            this->move = other.move;
+        else if (this->type == DROP)
+            this->drop = other.drop;
+        return *this;
+    }
 
     operator std::string() const {
         switch (this->type) {
@@ -90,15 +135,30 @@ class Action {
         return hash;
     }
 
+    int save_minimal(const auto& archive) const {
+        return (int) *this;
+    }
+
+    void load_minimal(const auto& archive, const int& result) {
+        int hash = result;
+        this->type = (ActionType) (hash & 0b111);
+        hash >>= 3;
+        
+        if (this->type == MOVE)
+            this->move = MoveAction(hash);
+        else if (this->type == DROP)
+            this->drop = DropAction(hash);
+    }
+
     bool operator==(const Action& other) const {
         return (int) *this == (int) other;
     }
 
     int toModelOutput() const {
         if (type == MOVE)
-            return MODEL_OUTPUT[this->move.src][this->move.dst];
+            return MODEL_OUTPUT[this->move.src][this->move.dst] + 66 * this->move.promote;
         else if (type == DROP)
-            return this->drop.graveIndex % 7;
+            return 132 + this->drop.graveIndex % 7;
         else
             return -1;
     }

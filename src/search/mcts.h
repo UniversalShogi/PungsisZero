@@ -27,10 +27,9 @@ class MCTSNode {
     int forced;
     float Q;
     float P;
-    float activateDFPN;
     std::vector<std::pair<Action, MCTSNode<n>*>> childs;
 
-    MCTSNode(int moveCount) : moveCount(moveCount), expanded(false), lost(false), N(0), childP(0), forced(0), Q(0), P(0), activateDFPN(0), childs() {}
+    MCTSNode(int moveCount) : moveCount(moveCount), expanded(false), lost(false), N(0), childP(0), forced(0), Q(0), P(0), childs() {}
     
     void clearChilds() {
         for (auto& [action, node] : childs)
@@ -47,8 +46,8 @@ class MCTSNode {
         float ninput[DROP_NUMBER * n + 1] = {};
         Board::toInputs(n, binput, ninput, states);
         
-        inputs[0] = torch::from_blob(binput, {PIECE_NUMBER * n + COLOUR_NUMBER * 3 + 1, 9, 9}, torch::TensorOptions().dtype(torch::kFloat32)).clone().to(torch::kCUDA).unsqueeze(0);
-        inputs[1] = torch::from_blob(ninput, {DROP_NUMBER * n + 1}, torch::TensorOptions().dtype(torch::kFloat32)).clone().to(torch::kCUDA).unsqueeze(0);
+        inputs[0] = torch::from_blob(binput, {PIECE_NUMBER * n + COLOUR_NUMBER * 3 + 1, 9, 9}, torch::TensorOptions().dtype(torch::kFloat32)).to(torch::kCUDA).unsqueeze(0);
+        inputs[1] = torch::from_blob(ninput, {DROP_NUMBER * n + 1}, torch::TensorOptions().dtype(torch::kFloat32)).to(torch::kCUDA).unsqueeze(0);
     }
 
     float expandNoisy(MCTSModel model, Board states[n], float dirichletConstant, double dirichletEpsilon, gsl_rng* r) {
@@ -61,16 +60,15 @@ class MCTSNode {
         gsl_ran_dirichlet(r, availables.size(), alpha, theta);
         torch::Tensor inputs[2];
         toInput(states, inputs);
-        torch::Tensor outputs[3];
+        torch::Tensor outputs[2];
 
         model->forward(inputs[0], inputs[1], outputs);
-        this->activateDFPN = outputs[2][0][0].item<float>();
 
         for (int i = 0; i < availables.size(); i++) {
             Action action = availables[i];
             MCTSNode<n>* child = new MCTSNode(this->moveCount + 1);
             child->P = (1 - dirichletEpsilon) * outputs[0][0][action.toModelOutput()][action.getPrincipalPosition() / 9][action.getPrincipalPosition() % 9].item<float>() + dirichletEpsilon * theta[i];
-            childs.push_back(std::make_pair(action, child));
+            childs.emplace_back(action, child);
         }
 
         this->expanded = true;
@@ -90,16 +88,14 @@ class MCTSNode {
         std::vector<Action> availables = states[n - 1].getKActions(states[n - 1].currentColour);
         torch::Tensor inputs[2];
         toInput(states, inputs);
-        torch::Tensor outputs[3];
+        torch::Tensor outputs[2];
 
         model->forward(inputs[0], inputs[1], outputs);
-        this->activateDFPN = outputs[2][0][0].item<float>();
 
-        for (int i = 0; i < availables.size(); i++) {
-            Action action = availables[i];
+        for (auto& action : availables) {
             MCTSNode<n>* child = new MCTSNode(this->moveCount + 1);
             child->P = outputs[0][0][action.toModelOutput()][action.getPrincipalPosition() / 9][action.getPrincipalPosition() % 9].item<float>();
-            childs.push_back(std::make_pair(action, child));
+            childs.emplace_back(action, child);
         }
 
         this->expanded = true;
@@ -192,7 +188,7 @@ class MCTS {
         Board newStates[n];
         for (int i = 1; i < n; i++)
             newStates[i] = states[i - 1];
-        newStates[n - 1] = Board(states[n - 1]);
+        newStates[n - 1] = states[n - 1];
         newStates[n - 1].inflict(newStates[n - 1].currentColour, bestAction);
         newStates[n - 1].changeTurn();
         float V = -this->simulate(bestChild, newStates);

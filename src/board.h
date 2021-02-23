@@ -48,7 +48,7 @@ class Board {
 
     Board() {
         for (int i = 0; i < PIECE_NUMBER; i++) {
-            this->pieces[i] = BitBoard(SETUP[i]);
+            this->pieces[i] = SETUP[i];
             this->placement[colourOf(i)] |= SETUP[i];
         }
     }
@@ -66,19 +66,6 @@ class Board {
             this->graveInfo[i] = setupGraveInfo[i];
 
         this->calibrate();        
-    }
-
-    Board(const Board& other) {
-        this->currentColour = other.currentColour;
-        for (int i = 0; i < PIECE_NUMBER; i++)
-            this->pieces[i] = BitBoard(other.pieces[i]);
-        for (int i = 0; i < COLOUR_NUMBER; i++) {
-            this->placement[i] = BitBoard(other.placement[i]);
-            this->pawnDropMask[i] = BitBoard(other.pawnDropMask[i]);
-            this->directChecks[i] = BitBoard(other.directChecks[i]);
-        }
-        for (int i = 0; i < DROP_NUMBER; i++)
-            this->graveInfo[i] = other.graveInfo[i];
     }
 
     BitBoard getEveryPieces() const {
@@ -117,6 +104,13 @@ class Board {
         }
     }
 
+    int getPieceAt(int src) {
+        for (int p = 0; p < PIECE_NUMBER; p++)
+            if (this->pieces[p].test(src))
+                return p;
+        return NONE;
+    }
+
     BitBoard getPenetratingSquares(int colour, int penetratingColour, int src, int piece) const {
         BitBoard everyPieces = this->placement[!penetratingColour];
         BitBoard attackable;
@@ -145,7 +139,7 @@ class Board {
 
     BitBoard getAttackingSquares(int colour, int src, int piece) const {
         BitBoard everyPieces = this->getEveryPieces();
-        BitBoard attackable = BitBoard(STEP_MOVES[piece][src]);
+        BitBoard attackable = STEP_MOVES[piece][src];
         int f = src / RANK_NUMBER;
         int r = src % RANK_NUMBER;
 
