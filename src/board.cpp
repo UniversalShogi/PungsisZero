@@ -12,6 +12,7 @@ BitBoard FILE_BB[FILE_NUMBER];
 BitBoard RANK_BB[RANK_NUMBER];
 BitBoard LINE[FILE_NUMBER * RANK_NUMBER][FILE_NUMBER * RANK_NUMBER];
 BitBoard SEGMENT[FILE_NUMBER * RANK_NUMBER][FILE_NUMBER * RANK_NUMBER];
+BitBoard RAY[FILE_NUMBER * RANK_NUMBER][FILE_NUMBER * RANK_NUMBER];
 BitBoard SETUP[PIECE_NUMBER];
 BitBoard PAWN_DROP_MASK[COLOUR_NUMBER][FILE_NUMBER];
 BitBoard LANCE_DROP_MASK[COLOUR_NUMBER];
@@ -51,6 +52,7 @@ void Board::init() {
             for (int n = 0; n < 8; n++) {
                 int power = DIR8[n];
                 BitBoard line;
+                BitBoard ray;
                 BitBoard segment;
 
                 for (int i = -8; i <= 8; i++) {
@@ -60,11 +62,25 @@ void Board::init() {
                         line.set(toBBIndex(dst[0], dst[1]));
                 }
 
+                for (int i = 1; i <= 8; i++) {
+                    int dst[2];
+                    calculateQueenDestination(f, r, power, dst, i);
+                    if (isInBound(dst[0], dst[1]))
+                        ray.set(toBBIndex(dst[0], dst[1]));
+                }
+
                 for (int i = -8; i <= 8; i++) {
                     int dst[2];
                     calculateQueenDestination(f, r, power, dst, i);
                     if (isInBound(dst[0], dst[1]))
                         LINE[toBBIndex(f, r)][toBBIndex(dst[0], dst[1])] = line;
+                }
+
+                for (int i = 1; i <= 8; i++) {
+                    int dst[2];
+                    calculateQueenDestination(f, r, power, dst, i);
+                    if (isInBound(dst[0], dst[1]))
+                        RAY[toBBIndex(f, r)][toBBIndex(dst[0], dst[1])] = ray;
                 }
 
                 for (int i = 1; i <= 8; i++) {
@@ -507,7 +523,11 @@ std::vector<Action> Board::getKActions(int colour) {
     BitBoard myChecking = this->directChecks[opponent] | this->getRangeAttackers(opponent, myKingLoc);
 
     if (myChecking.count() > 1) {
-        getAttackingSquares(colour, myKingLoc, myKing).forEach([&](int dst) {
+        BitBoard availableSquares = getAttackingSquares(colour, myKingLoc, myKing);
+        this->getRangeAttackers(opponent, myKingLoc).forEach([&](int src) {
+            availableSquares &= ~RAY[src][myKingLoc];
+        });
+        availableSquares.forEach([&](int dst) {
             if (!this->getAttackers(opponent, dst))
                 availables.push_back(Action(MoveAction(myKing, myKingLoc, dst, false)));
         });
@@ -522,11 +542,15 @@ std::vector<Action> Board::getKActions(int colour) {
             BitBoard attackable = this->getAttackingSquares(colour, src, piece);
 
             if (piece == myKing) {
-                    getAttackingSquares(colour, myKingLoc, myKing).forEach([&](int dst) {
-                        if (!this->getAttackers(opponent, dst))
-                            availables.push_back(Action(MoveAction(piece, src, dst, false)));
-                    });
-                    return;
+                BitBoard availableSquares = getAttackingSquares(colour, myKingLoc, myKing);
+                this->getRangeAttackers(opponent, myKingLoc).forEach([&](int src) {
+                    availableSquares &= ~RAY[src][myKingLoc];
+                });
+                availableSquares.forEach([&](int dst) {
+                    if (!this->getAttackers(opponent, dst))
+                        availables.push_back(Action(MoveAction(piece, src, dst, false)));
+                });
+                return;
             } else if (myChecking) {
                     attackable &= (myChecking | SEGMENT[myChecking.first()][myKingLoc]);
             }

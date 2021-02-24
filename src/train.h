@@ -76,6 +76,7 @@ class GameTrainer {
     int arenaGames;
     fs::path selfPlayDir;
     fs::path modelDir;
+    fs::path kifuDir;
     std::vector<int> arenaResults;
     std::random_device rd;
     std::default_random_engine eng;
@@ -83,14 +84,15 @@ class GameTrainer {
     float (*ninput)[DROP_NUMBER * n + 1];
     float valueLossConstant;
 
-    GameTrainer(MCTSModel model, const std::string& _selfPlayDir, const std::string& _modelDir,
+    GameTrainer(MCTSModel model, const std::string& _selfPlayDir, const std::string& _modelDir, const std::string& _kifuDir,
         int batchesPerCheckpoint = 100, int batchSize = 256, int leastSamples = 250000, int arenaGames = 100,
         float valueLossConstant = 1.5f, double lr = 6e-5, double l2Penalty = 3e-5)
         : model(model), optimizer(model->parameters(), torch::optim::AdamOptions(lr).weight_decay(l2Penalty))
-        , selfPlayDir(_selfPlayDir), modelDir(_modelDir), batchesPerCheckpoint(batchesPerCheckpoint), batchSize(batchSize)
+        , selfPlayDir(_selfPlayDir), modelDir(_modelDir), kifuDir(_kifuDir), batchesPerCheckpoint(batchesPerCheckpoint), batchSize(batchSize)
         , leastSamples(leastSamples), arenaGames(arenaGames), valueLossConstant(valueLossConstant), arenaResults(), rd(), eng(rd()) {
         fs::create_directory(selfPlayDir);
         fs::create_directory(modelDir);
+        fs::create_directory(kifuDir);
         
         if (fs::is_empty(modelDir))
             checkpoint();
@@ -122,7 +124,7 @@ class GameTrainer {
         })).filename();
         std::ifstream modelIn(modelDir / fileName);
         torch::load(model, modelIn);
-        std::ifstream optimIn(modelDir / (fileName + "optim"));
+        std::ifstream optimIn(modelDir / ("optim" + fileName.substr(5)));
         torch::load(optimizer, optimIn);
     }
 
@@ -130,7 +132,7 @@ class GameTrainer {
         std::string current = std::to_string(currentMillis());
         std::ofstream modelOut(modelDir / ("model" + current));
         torch::save(model, modelOut);
-        std::ofstream optimOut(std::ofstream(modelDir / ("model" + current + "optim")));
+        std::ofstream optimOut(modelDir / ("optim" + current));
         torch::save(optimizer, optimOut);
     }
 
@@ -140,6 +142,13 @@ class GameTrainer {
             std::ios::binary);
         cereal::BinaryOutputArchive gameFileArchive(gameFile);
         gameFileArchive(result);
+    }
+
+    void saveKifu(const std::string& kifu) {
+        std::ofstream kifuFile(kifuDir / ("kifu" +
+            std::to_string(currentMillis()) + "p" + std::to_string(getpid()) + ".kif"),
+            std::ios::binary);
+        kifuFile << kifu;   
     }
 
     void step() {

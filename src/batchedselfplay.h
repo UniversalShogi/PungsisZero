@@ -17,6 +17,9 @@
 #include <math.h>
 #include <limits>
 
+constexpr char FILE_CHAR[] = "１２３４５６７８９";
+constexpr char RANK_CHAR[] = "一二三四五六七八九";
+
 class BatchedMCTSNode {
     public:
     BatchedMCTSNode* parent;
@@ -135,7 +138,7 @@ class BatchedMCTSGame {
     bool ended = false;
     int moveCountThreshold;
 
-    BatchedMCTSGame(BatchedMCTSPlayer* sente, BatchedMCTSPlayer* gote, Board initState = Board(), int moveCountThreshold = 300)
+    BatchedMCTSGame(BatchedMCTSPlayer* sente, BatchedMCTSPlayer* gote, Board initState = Board(), int moveCountThreshold = 500)
         : sente(sente), gote(gote), history(), actionHistory(), moveCountThreshold(moveCountThreshold) {
         sente->game = this;
         gote->game = this;
@@ -149,6 +152,8 @@ class BatchedMCTSGame {
     BatchedMCTSPlayer* getOpponent() {
         return this->current.currentColour == 1 ? this->sente : this->gote;
     }
+
+    std::string toKifu();
 
     void act(Action action, gsl_rng* r);
 
@@ -186,6 +191,8 @@ class BatchedMCTS {
     public:
     GameTrainer<n>* trainer;
     bool saveGames;
+    bool saveKifu;
+    bool isArena;
 
     gsl_rng* r;
     std::vector<BatchedMCTSGame*> games;
@@ -196,8 +203,8 @@ class BatchedMCTS {
     int gameCtr;
     int maxGames;
 
-    BatchedMCTS(GameTrainer<n>* trainer, bool saveGames, BatchedMCTSGame* sampleGame, int gameCount = 100, int maxGames = 1000)
-        : trainer(trainer), saveGames(saveGames), r(gsl_rng_alloc(gsl_rng_mt19937)), games(), pending()
+    BatchedMCTS(GameTrainer<n>* trainer, BatchedMCTSGame* sampleGame, bool saveGames = true, bool isArena = false, bool saveKifu = true, int gameCount = 100, int maxGames = 1000)
+        : trainer(trainer), saveGames(saveGames), isArena(isArena), saveKifu(saveKifu), r(gsl_rng_alloc(gsl_rng_mt19937)), games(), pending()
         , gameCtr(0), maxGames(maxGames) {
         trainer->model->eval();
         gsl_rng_set(r, trainer->rd());
@@ -243,8 +250,13 @@ class BatchedMCTS {
                         }
 
                         trainer->serialize(result);
-                    } else
+                    }
+                    
+                    if (isArena)
                         trainer->arenaResults.push_back(game->winner);
+
+                    if (saveKifu)
+                        trainer->saveKifu(game->toKifu());
 
                     if (gameCtr + 1 < maxGames) {
                         gameCtr++;
@@ -283,7 +295,7 @@ class BatchedMCTS {
 
         for (int j = 0; j < pending.size(); j++) {
             bool addDirichlet = pending[j]->dirichletEnabled && !pending[j]->rootNode->expanded;
-            pending[j]->backpropagate(pending[j]->expand(pendingStates[j].back().getKActions(pendingStates[j].back().currentColour), j, outputs));
+            pending[j]->backpropagate(-pending[j]->expand(pendingStates[j].back().getKActions(pendingStates[j].back().currentColour), j, outputs));
             if (addDirichlet)
                 pending[j]->addDirichlet(r);
         }

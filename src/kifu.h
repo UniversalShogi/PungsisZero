@@ -12,13 +12,14 @@
 #include "basics.h"
 #include "game.h"
 #include "batchedselfplay.h"
+#include "train.h"
 
 constexpr char FILE_CHAR[] = "１２３４５６７８９";
 constexpr char RANK_CHAR[] = "一二三四五六七八九";
 
 class Kifu {
     public:
-    static std::string toKifu(Game game) {
+    static std::string toKifu(const Game& game) {
         std::stringstream kifu;
         time_t now = time(NULL);
         kifu << std::put_time(localtime(&now), "#KIF version=2.0 encoding=UTF-8\n\
