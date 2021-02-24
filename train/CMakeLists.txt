@@ -1,0 +1,5 @@
+include_directories(${PungsisZero_SOURCE_DIR}/src)
+add_executable(master master.cpp)
+add_executable(slave slave.cpp)
+target_link_libraries(master pungsiszero ${GSL_LIBRARIES} ${TORCH_LIBRARIES})
+target_link_libraries(slave pungsiszero ${GSL_LIBRARIES} ${TORCH_LIBRARIES})

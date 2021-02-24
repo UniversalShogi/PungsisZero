@@ -165,8 +165,6 @@ void BatchedMCTSGame::act(Action action, gsl_rng* r) {
 
 bool BatchedMCTSPlayer::step(std::default_random_engine& eng, gsl_rng* r, std::vector<Board>& states) {
     if (this->moveCount < naivePlayout) {
-        this->tree->dirichletEnabled = false;
-
         if (currDepth++ == 0)
             return true;
         else {
@@ -177,7 +175,7 @@ bool BatchedMCTSPlayer::step(std::default_random_engine& eng, gsl_rng* r, std::v
 
         return false;
     } else if (this->moveCount == naivePlayout)
-        this->tree->dirichletEnabled = true;
+        this->tree->dirichletEnabled = this->tree->useDirichlet;
     
     if (currDepth++ == (isFull ? bigDepth : smallDepth)) {
         if (isFull)

@@ -50,41 +50,24 @@ class MCTSNode {
         inputs[1] = torch::from_blob(ninput, {DROP_NUMBER * n + 1}, torch::TensorOptions().dtype(torch::kFloat32)).to(torch::kCUDA).unsqueeze(0);
     }
 
-    float expandNoisy(MCTSModel model, Board states[n], float dirichletConstant, double dirichletEpsilon, gsl_rng* r) {
-        std::vector<Action> availables = states[n - 1].getKActions(states[n - 1].currentColour);
-        double* alpha = new double[availables.size()];
-        for (int i = 0; i < availables.size(); i++)
+    void addDirichlet(float dirichletConstant, double dirichletEpsilon, gsl_rng* r) {
+        double* alpha = new double[childs.size()];
+        for (int i = 0; i < childs.size(); i++)
             alpha[i] = dirichletConstant;
         
-        double* theta = new double[availables.size()];
-        gsl_ran_dirichlet(r, availables.size(), alpha, theta);
-        torch::Tensor inputs[2];
-        toInput(states, inputs);
-        torch::Tensor outputs[2];
+        double* theta = new double[childs.size()];
+        gsl_ran_dirichlet(r, childs.size(), alpha, theta);
 
-        model->forward(inputs[0], inputs[1], outputs);
-
-        for (int i = 0; i < availables.size(); i++) {
-            Action action = availables[i];
-            MCTSNode<n>* child = new MCTSNode(this->moveCount + 1);
-            child->P = (1 - dirichletEpsilon) * outputs[0][0][action.toModelOutput()][action.getPrincipalPosition() / 9][action.getPrincipalPosition() % 9].item<float>() + dirichletEpsilon * theta[i];
-            childs.emplace_back(action, child);
+        for (int i = 0; i < childs.size(); i++) {
+            auto& [action, child] = childs[i];
+            child->P = (1 - dirichletEpsilon) * child->P + dirichletEpsilon * theta[i];
         }
-
-        this->expanded = true;
 
         delete[] theta;
         delete[] alpha;
-
-        if (this->childs.empty()) {
-            this->lost = true;
-            return -1;
-        }
-
-        return outputs[1][0][0].item<float>() - outputs[1][0][2].item<float>();
     }
 
-    float expandSilent(MCTSModel model, Board states[n]) {
+    float expand(MCTSModel model, Board states[n]) {
         std::vector<Action> availables = states[n - 1].getKActions(states[n - 1].currentColour);
         torch::Tensor inputs[2];
         toInput(states, inputs);
@@ -141,21 +124,20 @@ class MCTS {
 
     void stimulateSearching(Board states[3]) {
         if (!this->searchingNode->expanded)
-            this->searchingNode->expandSilent(model, states);
+            this->searchingNode->expand(model, states);
     }
 
     float simulate(MCTSNode<n>* node, Board states[n]) {
         node->N += 1;
 
-        if (node->lost) {
+        if (node->lost)
             return -1;
-        }
 
         if (!node->expanded) {
-            if (this->dirichletEnabled && node == this->searchingNode)
-                return node->expandNoisy(model, states, this->dirichletConstant, this->dirichletEpsilon, this->r);
-            else
-                return node->expandSilent(model, states);
+            float V = node->expand(model, states);
+            if (dirichletEnabled && node == searchingNode)
+                node->addDirichlet(dirichletConstant, dirichletEpsilon, r);
+            return V;
         }
 
         Action bestAction;
@@ -206,6 +188,8 @@ class MCTS {
         for (auto& [action, child] : searchingNode->childs)
             if (action == opponentAction) {
                 this->searchingNode = child;
+                if (dirichletEnabled && this->searchingNode->expanded)
+                    this->searchingNode->addDirichlet(dirichletConstant, dirichletEpsilon, r);
                 return;
             }
     }

@@ -114,14 +114,18 @@ class GameTrainer {
         }
     }
 
-    void reload() {
+    fs::path latestModelPath() {
         std::vector<fs::path> checkpoints;
         for (auto& checkpoint : fs::directory_iterator(modelDir))
             if (checkpoint.path().filename().native().rfind("model", 0) == 0)
                 checkpoints.push_back(checkpoint.path());
-        std::string fileName = (*std::max_element(checkpoints.begin(), checkpoints.end(), [](auto& a, auto& b) {
+        return *std::max_element(checkpoints.begin(), checkpoints.end(), [](auto& a, auto& b) {
             return fs::last_write_time(a) < fs::last_write_time(b);
-        })).filename();
+        });
+    }
+
+    void reload() {
+        std::string fileName = latestModelPath().filename();
         std::ifstream modelIn(modelDir / fileName);
         torch::load(model, modelIn);
         std::ifstream optimIn(modelDir / ("optim" + fileName.substr(5)));
@@ -136,16 +140,16 @@ class GameTrainer {
         torch::save(optimizer, optimOut);
     }
 
-    void serialize(const GameResult& result) const {
-        std::ofstream gameFile(selfPlayDir / ("game" +
+    void serialize(int slaveNum, const GameResult& result) const {
+        std::ofstream gameFile(selfPlayDir / ("game" + std::to_string(slaveNum) + "t" +
             std::to_string(currentMillis()) + "p" + std::to_string(getpid())),
             std::ios::binary);
         cereal::BinaryOutputArchive gameFileArchive(gameFile);
         gameFileArchive(result);
     }
 
-    void saveKifu(const std::string& kifu) {
-        std::ofstream kifuFile(kifuDir / ("kifu" +
+    void saveKifu(int slaveNum, const std::string& kifu) {
+        std::ofstream kifuFile(kifuDir / ("kifu" + std::to_string(slaveNum) + "t" +
             std::to_string(currentMillis()) + "p" + std::to_string(getpid()) + ".kif"),
             std::ios::binary);
         kifuFile << kifu;   
@@ -157,8 +161,10 @@ class GameTrainer {
         model->train();
         std::vector<fs::path> gameFiles;
 
-        for (auto& gameFile : fs::directory_iterator(selfPlayDir))
-            gameFiles.push_back(gameFile.path());
+        for (auto& gameFile : fs::directory_iterator(selfPlayDir)) {
+            if (fs::is_regular_file(fs::status(gameFile.path())))
+                gameFiles.push_back(gameFile.path());
+        }
         
         std::sort(gameFiles.begin(), gameFiles.end(), [](auto& a, auto& b) {
             return fs::last_write_time(a) < fs::last_write_time(b);

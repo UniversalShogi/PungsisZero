@@ -13,6 +13,7 @@ add_compile_options(-march=haswell -O3 -fconcepts -DPROP_GC)
 
 add_subdirectory(src)
 add_subdirectory(test)
+add_subdirectory(train)
 
 enable_testing()
 

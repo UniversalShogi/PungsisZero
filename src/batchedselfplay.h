@@ -23,12 +23,12 @@ constexpr char RANK_CHAR[] = "一二三四五六七八九";
 class BatchedMCTSNode {
     public:
     BatchedMCTSNode* parent;
-    int moveCount;
+    unsigned short moveCount;
     bool expanded;
     bool lost;
     int N;
     float childP;
-    int forced;
+    unsigned short forced;
     float Q;
     float P;
     std::vector<std::pair<Action, BatchedMCTSNode*>> childs;
@@ -51,6 +51,7 @@ class BatchedMCTSTree {
     BatchedMCTSNode* initNode;
     BatchedMCTSNode* rootNode;
     BatchedMCTSNode* searchingNode;
+    bool useDirichlet;
     bool dirichletEnabled;
     bool forcedPlayoutEnabled;
     float fpuRoot;
@@ -62,9 +63,9 @@ class BatchedMCTSTree {
 
     std::vector<BatchedMCTSNode*> samples;
 
-    BatchedMCTSTree(bool dirichletEnabled = true, bool forcedPlayoutEnabled = true, float fpuRoot = 0.0f, float fpuNonRoot = 0.2f,
+    BatchedMCTSTree(bool useDirichlet = true, bool forcedPlayoutEnabled = true, float fpuRoot = 0.0f, float fpuNonRoot = 0.2f,
         float puctConstant = 1.1f, double dirichletConstant = 0.15, float dirichletEpsilon = 0.25,
-        float forcedSimuConstant = 2) : dirichletEnabled(dirichletEnabled), forcedPlayoutEnabled(forcedPlayoutEnabled), fpuRoot(fpuRoot), fpuNonRoot(fpuNonRoot),
+        float forcedSimuConstant = 2) : useDirichlet(useDirichlet), dirichletEnabled(false), forcedPlayoutEnabled(forcedPlayoutEnabled), fpuRoot(fpuRoot), fpuNonRoot(fpuNonRoot),
         puctConstant(puctConstant), dirichletConstant(dirichletConstant), dirichletEpsilon(dirichletEpsilon),
         forcedSimuConstant(forcedSimuConstant) {
         initNode = new BatchedMCTSNode();
@@ -189,6 +190,7 @@ inline BatchedMCTSGame* newGameCopy(BatchedMCTSGame* sampleGame) {
 template <int n = 3>
 class BatchedMCTS {
     public:
+    int slaveNum;
     GameTrainer<n>* trainer;
     bool saveGames;
     bool saveKifu;
@@ -203,8 +205,8 @@ class BatchedMCTS {
     int gameCtr;
     int maxGames;
 
-    BatchedMCTS(GameTrainer<n>* trainer, BatchedMCTSGame* sampleGame, bool saveGames = true, bool isArena = false, bool saveKifu = true, int gameCount = 100, int maxGames = 1000)
-        : trainer(trainer), saveGames(saveGames), isArena(isArena), saveKifu(saveKifu), r(gsl_rng_alloc(gsl_rng_mt19937)), games(), pending()
+    BatchedMCTS(int slaveNum, GameTrainer<n>* trainer, BatchedMCTSGame* sampleGame, bool saveGames = true, bool isArena = false, bool saveKifu = true, int gameCount = 100, int maxGames = 1000)
+        : slaveNum(slaveNum), trainer(trainer), saveGames(saveGames), isArena(isArena), saveKifu(saveKifu), r(gsl_rng_alloc(gsl_rng_mt19937)), games(), pending()
         , gameCtr(0), maxGames(maxGames) {
         trainer->model->eval();
         gsl_rng_set(r, trainer->rd());
@@ -224,7 +226,6 @@ class BatchedMCTS {
             std::vector<Board> states(game->history.end() - std::min<int>(n, game->history.size()), game->history.end());
 
             while (!game->getCurrentPlayer()->step(this->trainer->eng, this->r, states)) {
-                states = std::vector<Board>(game->history.end() - std::min<int>(n, game->history.size()), game->history.end());
                 if (game->ended) {
                     if (saveGames) {
                         GameResult result;
@@ -249,14 +250,14 @@ class BatchedMCTS {
                             result.goteSamples.push_back(sample);
                         }
 
-                        trainer->serialize(result);
+                        trainer->serialize(slaveNum, result);
                     }
                     
                     if (isArena)
                         trainer->arenaResults.push_back(game->winner);
 
                     if (saveKifu)
-                        trainer->saveKifu(game->toKifu());
+                        trainer->saveKifu(slaveNum, game->toKifu());
 
                     if (gameCtr + 1 < maxGames) {
                         gameCtr++;
@@ -271,6 +272,8 @@ class BatchedMCTS {
                         break;
                     }
                 }
+
+                states = std::vector<Board>(game->history.end() - std::min<int>(n, game->history.size()), game->history.end());
             }
 
             if (game == nullptr)

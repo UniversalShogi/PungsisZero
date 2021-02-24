@@ -60,7 +60,7 @@ int main() {
     );
     std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
     std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
-    BatchedMCTS<3> mcts(&trainer, sampleGame, true, false, true, 24, 24);
+    BatchedMCTS<3> mcts(0, &trainer, sampleGame, true, false, true, 24, 24);
     begin = std::chrono::steady_clock::now();
     while (!mcts.games.empty())
         mcts.step();
