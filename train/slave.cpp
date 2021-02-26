@@ -46,13 +46,13 @@ int main() {
 
     for (int i = 0;; i++) {
         std::cout << "CYCLE " << i << " START" << std::endl;
-        BatchedMCTS<3> mcts(slaveNum, &trainer, sampleGame, true, false, false, 24, 24);
+        BatchedMCTS<3> mcts(slaveNum, &trainer, sampleGame, true, false, false, 16, 16);
         while (!mcts.games.empty())
             mcts.step();
         std::cout << "CYCLE " << i << " END" << std::endl;
-        std::string lock;
-        std::cout << "LOCK: ";
-        std::cin >> lock;
+        // std::string lock;
+        // std::cout << "LOCK: ";
+        // std::cin >> lock;
         trainer.reload();
     }
 

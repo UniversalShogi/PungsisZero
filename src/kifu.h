@@ -14,9 +14,6 @@
 #include "batchedselfplay.h"
 #include "train.h"
 
-constexpr char FILE_CHAR[] = "１２３４５６７８９";
-constexpr char RANK_CHAR[] = "一二三四五六七八九";
-
 class Kifu {
     public:
     static std::string toKifu(const Game& game) {

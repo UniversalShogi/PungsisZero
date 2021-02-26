@@ -64,7 +64,7 @@ class BatchedMCTSTree {
     std::vector<BatchedMCTSNode*> samples;
 
     BatchedMCTSTree(bool useDirichlet = true, bool forcedPlayoutEnabled = true, float fpuRoot = 0.0f, float fpuNonRoot = 0.2f,
-        float puctConstant = 1.1f, double dirichletConstant = 0.15, float dirichletEpsilon = 0.25,
+        float puctConstant = 4.0f, double dirichletConstant = 0.15, float dirichletEpsilon = 0.25,
         float forcedSimuConstant = 2) : useDirichlet(useDirichlet), dirichletEnabled(false), forcedPlayoutEnabled(forcedPlayoutEnabled), fpuRoot(fpuRoot), fpuNonRoot(fpuNonRoot),
         puctConstant(puctConstant), dirichletConstant(dirichletConstant), dirichletEpsilon(dirichletEpsilon),
         forcedSimuConstant(forcedSimuConstant) {
@@ -139,7 +139,7 @@ class BatchedMCTSGame {
     bool ended = false;
     int moveCountThreshold;
 
-    BatchedMCTSGame(BatchedMCTSPlayer* sente, BatchedMCTSPlayer* gote, Board initState = Board(), int moveCountThreshold = 500)
+    BatchedMCTSGame(BatchedMCTSPlayer* sente, BatchedMCTSPlayer* gote, Board initState = Board(), int moveCountThreshold = 400)
         : sente(sente), gote(gote), history(), actionHistory(), moveCountThreshold(moveCountThreshold) {
         sente->game = this;
         gote->game = this;

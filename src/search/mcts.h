@@ -111,7 +111,7 @@ class MCTS {
     float forcedSimuConstant;
 
     MCTS(MCTSModel model, bool dirichletEnabled = true, bool forcedPlayoutEnabled = true, float fpuRoot = 0.0f, float fpuNonRoot = 0.2f,
-        float puctConstant = 1.1f, double dirichletConstant = 0.15, float dirichletEpsilon = 0.25,
+        float puctConstant = 4.0f, double dirichletConstant = 0.15, float dirichletEpsilon = 0.25,
         float forcedSimuConstant = 2)
         : model(model), rd(), eng(rd()), r(gsl_rng_alloc(gsl_rng_mt19937)), dirichletEnabled(dirichletEnabled), forcedPlayoutEnabled(forcedPlayoutEnabled), fpuRoot(fpuRoot), fpuNonRoot(fpuNonRoot),
         puctConstant(puctConstant), dirichletConstant(dirichletConstant), dirichletEpsilon(dirichletEpsilon),

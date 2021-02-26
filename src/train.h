@@ -183,6 +183,8 @@ class GameTrainer {
                 sampleIndexes.emplace_back(games.size() - 1, 1, i);
         }
 
+        std::cout << "FETCHED SAMPLES: " << sampleIndexes.size() << std::endl;
+
         std::shuffle(sampleIndexes.begin(), sampleIndexes.end(), eng);
 
         int batchesProcessed = 0;
@@ -221,11 +223,14 @@ class GameTrainer {
                 valueReal[i][1] = game.winner == -1;
                 valueReal[i][2] = !player == game.winner;
                 Sample& sample = player == 0 ? game.senteSamples[sampleIndex] : game.goteSamples[sampleIndex];
+                float nSum = 0;
                 for (auto& [action, N] : sample.mcts_policy)
-                    mcts_policy[i][action.toModelOutput()][action.getPrincipalPosition() / 9][action.getPrincipalPosition() % 9] = N;
+                    nSum += N;
+                for (auto& [action, N] : sample.mcts_policy)
+                    mcts_policy[i][action.toModelOutput()][action.getPrincipalPosition() / 9][action.getPrincipalPosition() % 9] = N / nSum;
             }
 
-            torch::Tensor loss = -(torch::sum(mcts_policy * torch::log(outputs[0])) + torch::sum(valueReal * torch::log(outputs[1]))) / thisBatchSize;
+            torch::Tensor loss = -(torch::sum(mcts_policy * torch::log(outputs[0])) + valueLossConstant * torch::sum(valueReal * torch::log(outputs[1]))) / thisBatchSize;
             loss.backward();
             optimizer.step();
 

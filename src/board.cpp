@@ -310,7 +310,7 @@ std::vector<DropAction> Board::getNKDrops(int colour) {
 
         if (!getAttackers(colour, khead))
             goto noDropPawnMate;
-        if(getAttackers(opponent, khead) & (getPinning(opponent, opponentKingLoc) | FILE_BB[khead / RANK_NUMBER]) & ~pieces[kingOf(opponent)])
+        if(getAttackers(opponent, khead) & (~getPinning(colour, opponentKingLoc) | FILE_BB[khead / RANK_NUMBER]) & ~pieces[kingOf(opponent)])
             goto noDropPawnMate;
 
         dropPawnMate = khead;
@@ -380,7 +380,7 @@ std::vector<DropAction> Board::getKDrops(int colour) {
 
         if (!getAttackers(colour, khead))
             goto noDropPawnMate;
-        if(getAttackers(opponent, khead) & (getPinning(opponent, opponentKingLoc) | FILE_BB[khead / RANK_NUMBER]) & ~pieces[kingOf(opponent)])
+        if(getAttackers(opponent, khead) & (~getPinning(colour, opponentKingLoc) | FILE_BB[khead / RANK_NUMBER]) & ~pieces[kingOf(opponent)])
             goto noDropPawnMate;
         
         dropPawnMate = khead;
@@ -467,7 +467,7 @@ std::vector<Action> Board::getNKActions(int colour) {
 
         if (!getAttackers(colour, khead))
             goto noDropPawnMate;
-        if(getAttackers(opponent, khead) & (getPinning(opponent, opponentKingLoc) | FILE_BB[khead / RANK_NUMBER]) & ~pieces[kingOf(opponent)])
+        if(getAttackers(opponent, khead) & (~getPinning(colour, opponentKingLoc) | FILE_BB[khead / RANK_NUMBER]) & ~pieces[kingOf(opponent)])
             goto noDropPawnMate;
         
         dropPawnMate = khead;
@@ -595,11 +595,11 @@ std::vector<Action> Board::getKActions(int colour) {
 
         if (!getAttackers(colour, khead))
             goto noDropPawnMate;
-        if(getAttackers(opponent, khead) & (getPinning(opponent, opponentKingLoc) | FILE_BB[khead / RANK_NUMBER]) & ~pieces[kingOf(opponent)])
+        if(getAttackers(opponent, khead) & (~getPinning(colour, opponentKingLoc) | FILE_BB[khead / RANK_NUMBER]) & ~pieces[kingOf(opponent)])
             goto noDropPawnMate;
 
         dropPawnMate = khead;
-
+        
         getAttackingSquares(opponent, opponentKingLoc, kingOf(opponent)).forEach([&](int dst) {
             if (!this->getAttackers(colour, dst)) {
                 dropPawnMate = -1;
